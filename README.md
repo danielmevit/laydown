@@ -48,6 +48,8 @@ Details for this release: [CHANGELOG.md](CHANGELOG.md).
 
 **GNU Affero General Public License v3.0 (AGPL-3.0-only).** See [`LICENSE`](LICENSE), [`LICENSING.md`](LICENSING.md), and [`NOTICE`](NOTICE).
 
+**No warranty — use at your own risk.** The software is provided **“as is”** without warranty. You are responsible for verifying output (imposed PDFs, print readiness) before production use. The full disclaimer of warranty and limitation of liability is in [`LICENSE`](LICENSE) (AGPL sections 15–17). This README is not legal advice.
+
 ### Roadmap
 
 - More preprocessors (e.g. duplicate/split pages, bleeds, crop/center, scripting)  
