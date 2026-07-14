@@ -38,3 +38,9 @@ certs/
 # Temp files
 *.tmp
 *.bak
+
+# CodeGraph index (local, per-machine)
+.codegraph/
+
+# Node
+node_modules/

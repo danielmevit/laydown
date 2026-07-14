@@ -6,6 +6,17 @@ All notable changes to PressReady are documented here.
 
 ## [Unreleased]
 
+### Project organization (2026-07-14)
+
+- Adopted the AI-project standard (`_refs/ai-project-setup-playbook.md`): added `AGENTS.md`
+  router and `docs/ai/` (START_HERE, DECISIONS, GOTCHAS, DESIGN_SYSTEM), plus `TODO.md`
+  with prioritized findings from a full code review.
+- **CodeGraph**: indexed the repo (`.codegraph/` gitignored, per-machine); `codegraph.json`
+  excludes `_legacy/`, `framer-demo/`, `pressready-voice/`.
+- **Git model**: work now happens on `dev`; `main` is releases only.
+- **Hygiene**: untracked `framer-demo/node_modules` (2,196 files were committed); added
+  `node_modules/` and `.codegraph/` to `.gitignore`; set `core.filemode false` for WSL.
+
 ### Licensing
 
 - Project relicensed under **GNU Affero General Public License v3.0 only (AGPL-3.0-only)**. Added `LICENSE`, `LICENSING.md`, and `NOTICE`; updated `README.md` and `pyproject.toml`.
