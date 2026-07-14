@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pressready"
-version = "2.0.0"
+dynamic = ["version"]
 description = "Professional PDF Imposition Tool — N-Up, Booklet, Preprocessors, Marks"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,6 +31,11 @@ pressready = "pressready.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["pressready*"]
+
+# Single source of truth for the version: pressready/__init__.py
+[tool.setuptools.dynamic]
+version = {attr = "pressready.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

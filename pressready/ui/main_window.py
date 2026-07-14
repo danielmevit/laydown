@@ -22,6 +22,7 @@ from PyQt6.QtGui import (
     QIcon, QPixmap, QPainter, QPen, QColor, QPolygonF,
 )
 
+from pressready import __version__
 from pressready.engine.data_model import Project, LayoutType
 from pressready.engine.impose import impose
 from pressready.ui.preprocessors_tab import PreprocessorsTab
@@ -404,7 +405,7 @@ class _SettingsDialog(QDialog):
 # ── main window ──────────────────────────────────────
 
 
-def _app_icon() -> QIcon:
+def app_icon() -> QIcon:
     import sys, pathlib
     if getattr(sys, "frozen", False):
         base = pathlib.Path(sys._MEIPASS) / "assets" / "icons"
@@ -422,7 +423,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setStyleSheet(_DARK_STYLE)
-        self.setWindowIcon(_app_icon())
+        self.setWindowIcon(app_icon())
         self._update_title()
         self.setMinimumSize(1100, 750)
         self.resize(1440, 900)
@@ -721,7 +722,7 @@ class MainWindow(QMainWindow):
 
     # ── project assembly ─────────────────────────
 
-    def _build_project(self) -> Project:
+    def build_project(self) -> Project:
         p = Project()
         p.source_pdf_path = self._project.source_pdf_path
         p.preprocessors = self._preproc_tab.get_steps()
@@ -733,7 +734,7 @@ class MainWindow(QMainWindow):
     def _on_settings_changed(self):
         if not self._project.source_pdf_path:
             return
-        project = self._build_project()
+        project = self.build_project()
         self._canvas.update_project(project)
 
     def _on_view_toggle(self, _=None):
@@ -750,9 +751,9 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(
             self, "Open PDF", "", "PDF Files (*.pdf);;All Files (*)")
         if path:
-            self._load_pdf(path)
+            self.load_pdf(path)
 
-    def _load_pdf(self, path: str):
+    def load_pdf(self, path: str):
         if not os.path.isfile(path):
             self._status.showMessage(f"File not found: {path}")
             return
@@ -798,7 +799,7 @@ class MainWindow(QMainWindow):
         if urls:
             p = urls[0].toLocalFile()
             if p.lower().endswith(".pdf"):
-                self._load_pdf(p)
+                self.load_pdf(p)
                 ev.acceptProposedAction()
                 return
         ev.ignore()
@@ -830,7 +831,7 @@ class MainWindow(QMainWindow):
         for p in self._recent_files:
             a = self._recent_menu.addAction(os.path.basename(p))
             a.setData(p)
-            a.triggered.connect(lambda _, fp=p: self._load_pdf(fp))
+            a.triggered.connect(lambda _, fp=p: self.load_pdf(fp))
         self._recent_menu.addSeparator()
         self._recent_menu.addAction("Clear Recent", self._clear_recent)
 
@@ -844,7 +845,7 @@ class MainWindow(QMainWindow):
     def _on_export(self):
         if not self._project.source_pdf_path:
             return
-        project = self._build_project()
+        project = self.build_project()
         base = os.path.splitext(os.path.basename(project.source_pdf_path))[0]
         lt = project.layout
         sfx = "booklet" if lt.layout_type == LayoutType.BOOKLET else f"{lt.nup}up"
@@ -913,7 +914,7 @@ class MainWindow(QMainWindow):
 
     def _on_about(self):
         QMessageBox.about(self, "About PressReady v2",
-            f"<h2 style='color:{_ACCENT}'>PressReady v2.0.0</h2>"
+            f"<h2 style='color:{_ACCENT}'>PressReady v{__version__}</h2>"
             "<p>Professional PDF Imposition Tool</p>"
             "<p>Built with Python, PyQt6 &amp; PyMuPDF.</p>"
             "<hr><p><b>Features:</b> N-Up, Booklet, Preprocessors, "

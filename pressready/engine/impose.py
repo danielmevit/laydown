@@ -58,30 +58,33 @@ def impose(
         raise ValueError("No source PDF set")
 
     src_doc = fitz.open(project.source_pdf_path)
-    if len(src_doc) == 0:
+    try:
+        if len(src_doc) == 0:
+            raise ValueError("Source PDF has no pages")
+
+        # --- Preprocessors ---
+        # May hand back a different document (see apply_preprocessors' contract).
+        work_doc = apply_preprocessors(src_doc, project.preprocessors)
+        try:
+            # --- Page selection ---
+            total = len(work_doc)
+            expr = project.layout.page_range.strip()
+            if expr:
+                page_indices = parse_page_range(expr, total)
+            else:
+                page_indices = list(range(total))
+
+            # --- Impose ---
+            if project.layout.layout_type == LayoutType.BOOKLET:
+                return _impose_booklet(
+                    project, work_doc, page_indices, output_path, progress_callback)
+            return _impose_nup(
+                project, work_doc, page_indices, output_path, progress_callback)
+        finally:
+            if work_doc is not src_doc:
+                work_doc.close()
+    finally:
         src_doc.close()
-        raise ValueError("Source PDF has no pages")
-
-    # --- Preprocessors ---
-    src_doc = apply_preprocessors(src_doc, project.preprocessors)
-
-    # --- Page selection ---
-    total = len(src_doc)
-    expr = project.layout.page_range.strip()
-    if expr:
-        page_indices = parse_page_range(expr, total)
-    else:
-        page_indices = list(range(total))
-
-    # --- Impose ---
-    layout = project.layout
-    if layout.layout_type == LayoutType.BOOKLET:
-        num_sides = _impose_booklet(project, src_doc, page_indices, output_path, progress_callback)
-    else:
-        num_sides = _impose_nup(project, src_doc, page_indices, output_path, progress_callback)
-
-    src_doc.close()
-    return num_sides
 
 
 def impose_to_temp(
@@ -143,41 +146,44 @@ def _impose_nup(
     num_sheets = (num_src + nup - 1) // nup
     out_doc = fitz.open()
 
-    preset_label = project.sheet.preset if project.sheet.preset != "Custom" else "Custom"
+    preset_label = project.sheet.preset
     filename = os.path.basename(project.source_pdf_path)
 
-    for si in range(num_sheets):
+    try:
+        for si in range(num_sheets):
+            if progress_callback:
+                progress_callback(si, num_sheets)
+
+            page = out_doc.new_page(width=sheet_w, height=sheet_h)
+            cell_rects: List[fitz.Rect] = []
+
+            for ci in range(nup):
+                idx = si * nup + ci
+                if idx >= num_src:
+                    break
+                col = ci % cols
+                row = ci // cols
+                x0 = ml + col * (cell_w + gh)
+                y0 = mt + row * (cell_h + gv)
+                rect = fitz.Rect(x0, y0, x0 + cell_w, y0 + cell_h)
+                page.show_pdf_page(
+                    rect, src_doc, page_indices[idx], keep_proportion=True, overlay=True)
+                cell_rects.append(rect)
+
+            draw_marks(
+                page, project.marks, cell_rects,
+                sheet_w, sheet_h, ml, mr, mt, mb,
+                sheet_num=si + 1, total_sheets=num_sheets,
+                filename=filename,
+                layout_info=f"{nup}-Up on {preset_label}",
+            )
+
         if progress_callback:
-            progress_callback(si, num_sheets)
+            progress_callback(num_sheets, num_sheets)
 
-        page = out_doc.new_page(width=sheet_w, height=sheet_h)
-        cell_rects: List[fitz.Rect] = []
-
-        for ci in range(nup):
-            idx = si * nup + ci
-            if idx >= num_src:
-                break
-            col = ci % cols
-            row = ci // cols
-            x0 = ml + col * (cell_w + gh)
-            y0 = mt + row * (cell_h + gv)
-            rect = fitz.Rect(x0, y0, x0 + cell_w, y0 + cell_h)
-            page.show_pdf_page(rect, src_doc, page_indices[idx], keep_proportion=True, overlay=True)
-            cell_rects.append(rect)
-
-        draw_marks(
-            page, project.marks, cell_rects,
-            sheet_w, sheet_h, ml, mr, mt, mb,
-            sheet_num=si + 1, total_sheets=num_sheets,
-            filename=filename,
-            layout_info=f"{nup}-Up on {preset_label}",
-        )
-
-    if progress_callback:
-        progress_callback(num_sheets, num_sheets)
-
-    out_doc.save(output_path, garbage=4, deflate=True)
-    out_doc.close()
+        out_doc.save(output_path, garbage=4, deflate=True)
+    finally:
+        out_doc.close()
     return num_sheets
 
 
@@ -232,44 +238,51 @@ def _impose_booklet(
     num_src = len(page_indices)
     order = booklet_page_order(num_src)
     num_sides = len(order)
+    num_sheets = num_sides // 2
     out_doc = fitz.open()
 
-    preset_label = project.sheet.preset if project.sheet.preset != "Custom" else "Custom"
+    preset_label = project.sheet.preset
     filename = os.path.basename(project.source_pdf_path)
     fold_x = ml + cell_w + gh / 2
 
-    for si, (lp, rp) in enumerate(order):
+    try:
+        for si, (lp, rp) in enumerate(order):
+            if progress_callback:
+                progress_callback(si, num_sides)
+
+            page = out_doc.new_page(width=sheet_w, height=sheet_h)
+            cell_rects: List[fitz.Rect] = []
+
+            if lp >= 0:
+                r = fitz.Rect(ml, mt, ml + cell_w, mt + cell_h)
+                page.show_pdf_page(
+                    r, src_doc, page_indices[lp], keep_proportion=True, overlay=True)
+                cell_rects.append(r)
+
+            if rp >= 0:
+                rx0 = ml + cell_w + gh
+                r = fitz.Rect(rx0, mt, rx0 + cell_w, mt + cell_h)
+                page.show_pdf_page(
+                    r, src_doc, page_indices[rp], keep_proportion=True, overlay=True)
+                cell_rects.append(r)
+
+            # Two sides make one physical sheet: marks that count or step must
+            # count sheets, not sides, or a 4-side booklet claims to be 4 sheets.
+            sheet_num = si // 2 + 1
+            side = "Front" if si % 2 == 0 else "Back"
+            draw_marks(
+                page, project.marks, cell_rects,
+                sheet_w, sheet_h, ml, mr, mt, mb,
+                sheet_num=sheet_num, total_sheets=num_sheets,
+                filename=filename,
+                layout_info=f"Booklet on {preset_label} — {side}",
+                fold_x=fold_x,
+            )
+
         if progress_callback:
-            progress_callback(si, num_sides)
+            progress_callback(num_sides, num_sides)
 
-        page = out_doc.new_page(width=sheet_w, height=sheet_h)
-        cell_rects: List[fitz.Rect] = []
-
-        if lp >= 0:
-            r = fitz.Rect(ml, mt, ml + cell_w, mt + cell_h)
-            page.show_pdf_page(r, src_doc, page_indices[lp], keep_proportion=True, overlay=True)
-            cell_rects.append(r)
-
-        if rp >= 0:
-            rx0 = ml + cell_w + gh
-            r = fitz.Rect(rx0, mt, rx0 + cell_w, mt + cell_h)
-            page.show_pdf_page(r, src_doc, page_indices[rp], keep_proportion=True, overlay=True)
-            cell_rects.append(r)
-
-        sheet_num = si // 2 + 1
-        side = "Front" if si % 2 == 0 else "Back"
-        draw_marks(
-            page, project.marks, cell_rects,
-            sheet_w, sheet_h, ml, mr, mt, mb,
-            sheet_num=si + 1, total_sheets=num_sides,
-            filename=filename,
-            layout_info=f"Booklet on {preset_label} — Sheet {sheet_num} {side}",
-            fold_x=fold_x,
-        )
-
-    if progress_callback:
-        progress_callback(num_sides, num_sides)
-
-    out_doc.save(output_path, garbage=4, deflate=True)
-    out_doc.close()
+        out_doc.save(output_path, garbage=4, deflate=True)
+    finally:
+        out_doc.close()
     return num_sides

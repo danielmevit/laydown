@@ -6,6 +6,34 @@ All notable changes to PressReady are documented here.
 
 ## [Unreleased]
 
+### Phase 1 — Ground truth (2026-07-14)
+
+**Tests** — `tests/` went from empty to 96 tests. The centrepiece is a round-trip bench harness
+(`tests/helpers.py`): build a source PDF carrying findable tokens, impose it, read the tokens back
+out of the *output*, and assert every page landed where the geometry says. Cell maths is re-derived
+in the tests rather than imported, so they can disagree with the engine. Also invariants for
+saddle-stitch ordering, page-range parsing, margin containment, determinism, and culture-invariance.
+
+**Fixed** (each was reproduced by a failing test first):
+- `impose()` leaked the source document whenever imposition raised; output documents leaked on a
+  failed save. Both now close in `finally`.
+- **Reorder silently deleted pages.** `"4,3"` on a four-page document meant "keep two" — a reorder
+  is not a delete. A partial, out-of-range or unparseable order now raises with a message that says
+  what to type instead. Bad expressions used to be ignored entirely.
+- **Scale Pages cropped instead of scaling.** It only moved the MediaBox, so reducing a page cut its
+  bottom-right away rather than shrinking the artwork. It now re-places page content vectorially and
+  carries trim/bleed/art boxes with it.
+- Booklet marks counted **sides as sheets** — a 4-side (2-sheet) booklet labelled itself "Sheet 1 of
+  4", and collating marks stepped per side, so a collated stack showed the wrong staircase.
+- Removed a dead expression in `impose.py` whose branches were identical.
+
+**Added**
+- `python -m pressready --smoke` — headless end-to-end self-check (build a sample, impose it, verify
+  the output, construct the real window offscreen, exit 0/1). Runs in WSL and in a frozen build.
+- Proper CLI entry point (`--version`, optional PDF argument).
+- Version single-sourced from `pressready/__init__.py`; `pyproject.toml` reads it dynamically and
+  the About dialog no longer hardcodes it.
+
 ### Planning (2026-07-14)
 
 - **Reference study** — `docs/ai/REFERENCE_STUDY.md`: Imposition Wizard 3 (installed build:
