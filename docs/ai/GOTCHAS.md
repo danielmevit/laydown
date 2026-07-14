@@ -25,19 +25,23 @@
   a resized one with `show_pdf_page` (what `_scale` does), which returns a *new* document.
 
 ## Known code traps
-- **The Layout tab lies:** booklet Mode (work-and-turn/tumble, perfect bound),
-  right-to-left, move-fillers, Signatures, and Page Creep are all collected into
-  `LayoutSettings` but the engine ignores them (only sheetwise saddle-stitch + N-Up are
-  implemented). Don't treat the UI or `data_model.py` as the spec — `engine/impose.py`
-  and `engine/preprocessors.py` are the truth. Same for `PreprocessorType`: 12 declared,
-  3 implemented (rotate/scale/reorder).
-- **Preview overlay geometry is duplicated** — `ui/preview_panel.compute_cells()`
-  re-implements the cell math from `engine/impose.py`. Change one → change both, or the
-  magenta overlays drift from the real output.
-- **Scale preprocessor only resizes the mediabox** (`set_mediabox`) — it does not
-  transform page content. Verify intended behavior before touching it (TODO.md).
-- **Silent-failure style in preprocessors:** `_reorder` returns silently on a bad
-  expression (and `doc.select` with a partial list *drops* unlisted pages).
+- **Adding a field to the data model fails the build until you classify it** in
+  `engine/capabilities.py` as HONOURED or NOT_IMPLEMENTED. That is deliberate: it is the
+  guard against v2.0.0's defect, where the UI collected settings the engine ignored.
+  If a setting isn't implemented yet, put it in NOT_IMPLEMENTED — the UI is then
+  forbidden from offering it, and `tests/test_capabilities.py` enforces both directions.
+- **`ui/schema.py` is the only place settings UI is declared.** Don't hand-build a
+  control; add a schema entry. Its `target` is a dotted path into `Project`.
+- **Display units are not a schema target** and never reach the engine. The model is
+  millimetres throughout; `ValueStore.unit` + `LengthSpin` convert at the widget only.
+- **`get_drawings()` ignores clipping**, and reports source paths at their *unclipped*
+  extent transformed into sheet space. To check what actually reaches paper, render a
+  pixmap and sample it (see `tests/test_source_boxes.py::TestBleed`).
+- **`show_pdf_page(rotate=90)` turns anticlockwise** in sheet terms — a source's top edge
+  ends up down the sheet's left. Verified against output, not assumed; bleed margins have
+  to rotate with it (`geometry.place_page`).
+- **`preprocessors.apply_preprocessors` may return a *different* document** (scaling has
+  to rebuild pages). The caller owns the input; if the returned doc differs, close both.
 
 ## Build / packaging
 - MSIX build needs a Windows 10 SDK; `certs/` (signing keys) is gitignored — first run of

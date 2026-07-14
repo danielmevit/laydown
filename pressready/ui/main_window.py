@@ -1,245 +1,116 @@
 """
-Main application window — dark theme, two-column layout.
-Left column: toolbar + sheet canvas.   Right column: icon tab bar + settings.
+Main application window — two columns: sheet canvas on the left, settings on the right.
+
+The settings column is not built here. It is rendered from ``ui/schema.SCHEMA`` by
+``ui/panel.py``, so adding a setting means adding a schema entry, and a control that
+the engine doesn't honour fails the test suite rather than the operator's job.
 """
 
 import math
 import os
+import pathlib
 import sys
 import webbrowser
 from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QStatusBar, QFileDialog, QTabBar, QStackedWidget,
-    QProgressDialog, QMessageBox, QFrame, QDialog, QScrollArea,
-    QTextBrowser, QDialogButtonBox, QToolButton, QButtonGroup,
-    QSizePolicy, QApplication,
-)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QRectF, QPointF, QSize
+from PyQt6.QtCore import QSize, QSettings, Qt, QRectF, QPointF, QThread, pyqtSignal
 from PyQt6.QtGui import (
-    QFont, QDragEnterEvent, QDropEvent, QAction, QKeySequence,
-    QIcon, QPixmap, QPainter, QPen, QColor, QPolygonF,
+    QAction, QActionGroup, QColor, QDragEnterEvent, QDropEvent, QFont, QIcon, QKeySequence,
+    QPainter, QPen, QPixmap, QPolygonF,
+)
+from PyQt6.QtWidgets import (
+    QApplication, QButtonGroup, QDialog, QDialogButtonBox, QFileDialog, QFrame,
+    QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressDialog, QPushButton,
+    QScrollArea, QStackedWidget, QStatusBar, QTabBar, QTextBrowser, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from pressready import __version__
-from pressready.engine.data_model import Project, LayoutType
+from pressready.engine.data_model import LayoutType, Project
 from pressready.engine.impose import impose
-from pressready.ui.preprocessors_tab import PreprocessorsTab
-from pressready.ui.layout_tab import LayoutTab
-from pressready.ui.sheet_tab import SheetTab
+from pressready.engine.utils import Unit
+from pressready.ui import theme as t
+from pressready.ui.help import tutorials_html
 from pressready.ui.marks_tab import MarksTab
+from pressready.ui.panel import SchemaTab, ValueStore
+from pressready.ui.preprocessors_tab import PreprocessorsTab
 from pressready.ui.preview_panel import SheetCanvas
+from pressready.ui.schema import SCHEMA
 
-_APP_TITLE = "PressReady v2"
+_APP_TITLE = "PressReady"
 _MAX_RECENT = 8
 _ICON_SZ = 22
 _TAB_SZ = 24
-_TAB_NAMES = ["Preprocessors", "Layout", "Sheet", "Marks"]
 
-# ── dark palette ─────────────────────────────────────
-
-_ACCENT = "#D07B24"
-_ACCENT_HOVER = "#BC6F20"
-_ACCENT_PRESS = "#A8631C"
-
-_BG = "#1e1e1e"
-_BG2 = "#252526"
-_BG3 = "#2d2d2d"
-_BG_INPUT = "#3c3c3c"
-_BORDER = "#3e3e42"
-_TEXT = "#d4d4d4"
-_TEXT_DIM = "#888"
-
-_CLR = QColor(185, 185, 190)
-_FILL = QColor(75, 78, 85)
+_STROKE = QColor(t.FG_MUTED)
+_FILL = QColor(t.INPUT_BG)
 
 _TOOL_BTN_STYLE = (
-    "QToolButton { padding: 4px; border-radius: 3px; border: none;"
-    "              background: transparent; }"
-    "QToolButton:hover { background: rgba(255,255,255,0.08); }"
-    "QToolButton:checked { background: rgba(255,255,255,0.14);"
-    "                      border: 1px solid #666; }"
+    f"QToolButton {{ padding: 4px; border-radius: {t.RADIUS_SM}px; border: none;"
+    f"               background: transparent; }}"
+    f"QToolButton:hover {{ background: {t.HOVER_WASH}; }}"
+    f"QToolButton:checked {{ background: {t.SELECTED_WASH}; }}"
 )
 
 
-# ── global dark stylesheet ───────────────────────────
+# ── icons, drawn rather than shipped ─────────────────
 
-_DARK_STYLE = f"""
-/* base */
-QWidget {{ color: {_TEXT}; }}
-QMainWindow {{ background: {_BG}; }}
-QDialog {{ background: {_BG}; }}
-
-/* menu */
-QMenuBar {{ background: {_BG3}; color: #ccc; border-bottom: 1px solid {_BORDER}; padding: 2px 0; }}
-QMenuBar::item {{ padding: 4px 10px; background: transparent; }}
-QMenuBar::item:selected {{ background: {_BORDER}; }}
-QMenu {{ background: #2d2d30; color: #ccc; border: 1px solid #454545; padding: 4px 0; }}
-QMenu::item {{ padding: 5px 28px 5px 20px; }}
-QMenu::item:selected {{ background: {_ACCENT}; color: #fff; }}
-QMenu::separator {{ height: 1px; background: {_BORDER}; margin: 4px 8px; }}
-QMenu::item:disabled {{ color: #666; }}
-
-/* status */
-QStatusBar {{ background: {_BG}; color: {_TEXT_DIM}; border-top: 1px solid {_BORDER}; }}
-
-/* labels */
-QLabel {{ background: transparent; }}
-
-/* inputs */
-QComboBox {{ background: {_BG_INPUT}; color: {_TEXT}; border: 1px solid #555;
-             padding: 4px 8px; border-radius: 3px; min-height: 18px; }}
-QComboBox:hover, QComboBox:focus {{ border-color: {_ACCENT}; }}
-QComboBox::drop-down {{ border: none; width: 20px; }}
-QComboBox QAbstractItemView {{ background: #2d2d30; color: {_TEXT};
-    selection-background-color: {_ACCENT}; selection-color: #fff;
-    border: 1px solid #555; outline: none; }}
-
-QSpinBox, QDoubleSpinBox {{ background: {_BG_INPUT}; color: {_TEXT};
-    border: 1px solid #555; padding: 3px 6px; border-radius: 3px; }}
-QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: {_ACCENT}; }}
-QSpinBox::up-button, QDoubleSpinBox::up-button,
-QSpinBox::down-button, QDoubleSpinBox::down-button {{
-    background: #4a4a4a; border: none; width: 16px; }}
-QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
-QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
-    background: #5a5a5a; }}
-
-QLineEdit {{ background: {_BG_INPUT}; color: {_TEXT};
-    border: 1px solid #555; padding: 4px 6px; border-radius: 3px; }}
-QLineEdit:focus {{ border-color: {_ACCENT}; }}
-
-/* buttons */
-QPushButton {{ background: {_BG_INPUT}; color: {_TEXT};
-    border: 1px solid #555; padding: 5px 14px; border-radius: 3px; }}
-QPushButton:hover {{ background: #4a4a4a; border-color: #666; }}
-QPushButton:pressed {{ background: #333; }}
-QPushButton:disabled {{ color: #666; background: #2a2a2a; border-color: #444; }}
-
-/* checkbox / radio */
-QCheckBox, QRadioButton {{ spacing: 6px; }}
-QCheckBox::indicator, QRadioButton::indicator {{
-    width: 16px; height: 16px; border: 1px solid #555; background: {_BG_INPUT}; }}
-QCheckBox::indicator {{ border-radius: 3px; }}
-QRadioButton::indicator {{ border-radius: 8px; }}
-QCheckBox::indicator:checked {{ background: {_ACCENT}; border-color: {_ACCENT}; }}
-QRadioButton::indicator:checked {{ background: {_ACCENT}; border-color: {_ACCENT}; }}
-
-/* group box */
-QGroupBox {{ border: 1px solid {_BORDER}; border-radius: 4px;
-    margin-top: 10px; padding-top: 14px; font-weight: bold; }}
-QGroupBox::title {{ subcontrol-origin: margin; left: 10px;
-    padding: 0 5px; color: {_ACCENT}; }}
-
-/* list */
-QListWidget, QListView {{ background: #2d2d30; color: {_TEXT};
-    border: 1px solid {_BORDER}; border-radius: 3px; outline: none; }}
-QListWidget::item {{ padding: 4px 8px; }}
-QListWidget::item:selected {{ background: {_ACCENT}; color: #fff; }}
-QListWidget::item:hover:!selected {{ background: {_BORDER}; }}
-
-/* scrollbar */
-QScrollBar:vertical {{ background: {_BG2}; width: 10px; border: none; }}
-QScrollBar::handle:vertical {{ background: #555; border-radius: 5px; min-height: 30px; }}
-QScrollBar::handle:vertical:hover {{ background: #777; }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}
-QScrollBar:horizontal {{ background: {_BG2}; height: 10px; border: none; }}
-QScrollBar::handle:horizontal {{ background: #555; border-radius: 5px; min-width: 30px; }}
-QScrollBar::handle:horizontal:hover {{ background: #777; }}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: none; }}
-
-/* misc */
-QToolTip {{ background: #2d2d30; color: {_TEXT}; border: 1px solid #555; padding: 4px 8px; }}
-QTextBrowser {{ background: {_BG}; color: {_TEXT}; border: 1px solid {_BORDER}; }}
-QProgressBar {{ background: {_BG_INPUT}; border: 1px solid #555;
-    border-radius: 3px; text-align: center; color: {_TEXT}; }}
-QProgressBar::chunk {{ background: {_ACCENT}; border-radius: 3px; }}
-QScrollArea {{ border: none; background: transparent; }}
-QTabWidget::pane {{ border: 1px solid {_BORDER}; background: {_BG2}; }}
-QSplitter::handle {{ background: {_BORDER}; }}
-"""
-
-
-# ── icon factory ─────────────────────────────────────
-
-
-def _icon(draw_fn, size=_ICON_SZ) -> QIcon:
+def _icon(draw, size=_ICON_SZ) -> QIcon:
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    draw_fn(p)
+    draw(p)
     p.end()
     return QIcon(pm)
 
 
-# -- toolbar icons
-
 def _ico_1col():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.3))
-        p.setBrush(_FILL)
+        p.setPen(QPen(_STROKE, 1.3)); p.setBrush(_FILL)
         p.drawRect(QRectF(6, 2, 10, 18))
     return _icon(draw)
 
 
 def _ico_2col():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.2))
-        p.setBrush(_FILL)
-        p.drawRect(QRectF(1, 3, 8.5, 16))
-        p.drawRect(QRectF(12.5, 3, 8.5, 16))
+        p.setPen(QPen(_STROKE, 1.2)); p.setBrush(_FILL)
+        p.drawRect(QRectF(1, 3, 8.5, 16)); p.drawRect(QRectF(12.5, 3, 8.5, 16))
     return _icon(draw)
 
 
 def _ico_4col():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.0))
-        p.setBrush(_FILL)
+        p.setPen(QPen(_STROKE, 1.0)); p.setBrush(_FILL)
         for i in range(4):
             p.drawRect(QRectF(1 + i * 5.3, 4, 4, 14))
     return _icon(draw)
 
 
-def _ico_zoom_in():
+def _ico_zoom(plus: bool):
     def draw(p):
-        p.setPen(QPen(_CLR, 1.5))
-        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(_STROKE, 1.5)); p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(QPointF(9, 9), 5.5, 5.5)
         p.drawLine(QPointF(13, 13), QPointF(18, 18))
         p.drawLine(QPointF(7, 9), QPointF(11, 9))
-        p.drawLine(QPointF(9, 7), QPointF(9, 11))
-    return _icon(draw)
-
-
-def _ico_zoom_out():
-    def draw(p):
-        p.setPen(QPen(_CLR, 1.5))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(QPointF(9, 9), 5.5, 5.5)
-        p.drawLine(QPointF(13, 13), QPointF(18, 18))
-        p.drawLine(QPointF(7, 9), QPointF(11, 9))
+        if plus:
+            p.drawLine(QPointF(9, 7), QPointF(9, 11))
     return _icon(draw)
 
 
 def _ico_fit_width():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.3))
+        p.setPen(QPen(_STROKE, 1.3))
         p.drawLine(QPointF(2, 11), QPointF(20, 11))
-        p.drawLine(QPointF(2, 11), QPointF(6, 8))
-        p.drawLine(QPointF(2, 11), QPointF(6, 14))
-        p.drawLine(QPointF(20, 11), QPointF(16, 8))
-        p.drawLine(QPointF(20, 11), QPointF(16, 14))
+        for x, d in ((2, 4), (20, -4)):
+            p.drawLine(QPointF(x, 11), QPointF(x + d, 8))
+            p.drawLine(QPointF(x, 11), QPointF(x + d, 14))
     return _icon(draw)
 
 
 def _ico_fit_page():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.2))
-        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(_STROKE, 1.2)); p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawRect(QRectF(4, 3, 14, 16))
         p.drawLine(QPointF(8, 11), QPointF(14, 11))
         p.drawLine(QPointF(11, 8), QPointF(11, 14))
@@ -248,33 +119,24 @@ def _ico_fit_page():
 
 def _ico_actual():
     def draw(p):
-        f = QFont("Segoe UI", 8)
-        f.setBold(True)
-        p.setFont(f)
-        p.setPen(_CLR)
-        p.drawText(QRectF(0, 0, _ICON_SZ, _ICON_SZ),
-                    Qt.AlignmentFlag.AlignCenter, "1:1")
+        f = QFont(t.FONT_FAMILY, 8); f.setBold(True)
+        p.setFont(f); p.setPen(_STROKE)
+        p.drawText(QRectF(0, 0, _ICON_SZ, _ICON_SZ), Qt.AlignmentFlag.AlignCenter, "1:1")
     return _icon(draw)
 
 
-# -- settings-panel tab icons
-
-def _ico_tab_preproc():
+def _ico_tab_source():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.2))
-        p.setBrush(QColor(55, 58, 65))
+        p.setPen(QPen(_STROKE, 1.2)); p.setBrush(QColor(t.RAISED))
         p.drawRect(QRectF(8, 1, 12, 15))
-        p.setBrush(_FILL)
-        p.drawRect(QRectF(3, 5, 12, 15))
+        p.setBrush(_FILL); p.drawRect(QRectF(3, 5, 12, 15))
     return _icon(draw, _TAB_SZ)
 
 
 def _ico_tab_layout():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.2))
-        p.setBrush(_FILL)
-        g = 2.0
-        w = (_TAB_SZ - g * 3) / 2
+        p.setPen(QPen(_STROKE, 1.2)); p.setBrush(_FILL)
+        g = 2.0; w = (_TAB_SZ - g * 3) / 2
         for r in range(2):
             for c in range(2):
                 p.drawRect(QRectF(g + c * (w + g), g + r * (w + g), w, w))
@@ -283,10 +145,9 @@ def _ico_tab_layout():
 
 def _ico_tab_sheet():
     def draw(p):
-        p.setPen(QPen(_CLR, 1.2))
-        p.setBrush(_FILL)
+        p.setPen(QPen(_STROKE, 1.2)); p.setBrush(_FILL)
         p.drawRect(QRectF(4, 1, 16, 22))
-        p.setPen(QPen(QColor(120, 120, 125), 0.8))
+        p.setPen(QPen(QColor(t.FG_FAINT), 0.8))
         for y in (7, 11, 15):
             p.drawLine(QPointF(7, y), QPointF(17, y))
     return _icon(draw, _TAB_SZ)
@@ -295,244 +156,222 @@ def _ico_tab_sheet():
 def _ico_tab_marks():
     def draw(p):
         c = _TAB_SZ / 2.0
-        p.setPen(QPen(_CLR, 1.0))
-        p.setBrush(QColor(85, 90, 100))
-        pts = []
-        for i in range(12):
-            a = i * math.pi / 6
-            r = 9.5 if i % 2 == 0 else 6.0
-            pts.append(QPointF(c + r * math.cos(a), c + r * math.sin(a)))
+        p.setPen(QPen(_STROKE, 1.0)); p.setBrush(QColor(t.INPUT_BG))
+        pts = [QPointF(c + (9.5 if i % 2 == 0 else 6.0) * math.cos(i * math.pi / 6),
+                       c + (9.5 if i % 2 == 0 else 6.0) * math.sin(i * math.pi / 6))
+               for i in range(12)]
         p.drawPolygon(QPolygonF(pts))
-        p.setBrush(QColor(50, 52, 58))
-        p.drawEllipse(QPointF(c, c), 3, 3)
+        p.setBrush(QColor(t.BG)); p.drawEllipse(QPointF(c, c), 3, 3)
     return _icon(draw, _TAB_SZ)
 
 
-# ── helpers ──────────────────────────────────────────
+_TAB_ICONS = (_ico_tab_source, _ico_tab_layout, _ico_tab_sheet, _ico_tab_marks)
 
 
-def _make_tool_btn(icon, tooltip, checkable=False, checked=False):
-    btn = QToolButton()
-    btn.setIcon(icon)
-    btn.setToolTip(tooltip)
-    btn.setCheckable(checkable)
-    btn.setChecked(checked)
-    btn.setIconSize(QSize(_ICON_SZ, _ICON_SZ))
-    btn.setStyleSheet(_TOOL_BTN_STYLE)
-    return btn
+def _tool_btn(icon, tooltip, checkable=False, checked=False):
+    b = QToolButton()
+    b.setIcon(icon)
+    b.setToolTip(tooltip)
+    b.setCheckable(checkable)
+    b.setChecked(checked)
+    b.setIconSize(QSize(_ICON_SZ, _ICON_SZ))
+    b.setCursor(Qt.CursorShape.PointingHandCursor)
+    b.setStyleSheet(_TOOL_BTN_STYLE)
+    return b
 
 
-def _vsep(h=22):
+def _vsep(h=20):
     f = QFrame()
     f.setFixedSize(1, h)
-    f.setStyleSheet(f"background: #555;")
+    f.setStyleSheet(f"background: {t.BORDER};")
     return f
 
 
-def _scrollable(widget):
-    sa = QScrollArea()
-    sa.setWidget(widget)
-    sa.setWidgetResizable(True)
-    sa.setFrameShape(QFrame.Shape.NoFrame)
-    sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    return sa
-
-
-# ── export worker ────────────────────────────────────
-
-
-class _ExportWorker(QThread):
-    progress = pyqtSignal(int, int)
-    finished = pyqtSignal(int, str)
-    error = pyqtSignal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._project: Optional[Project] = None
-        self._output: str = ""
-
-    def setup(self, project: Project, output_path: str):
-        self._project = project
-        self._output = output_path
-
-    def run(self):
-        try:
-            def cb(cur, tot):
-                self.progress.emit(cur, tot)
-            n = impose(self._project, self._output, progress_callback=cb)
-            self.finished.emit(n, self._output)
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-# ── dialogs ──────────────────────────────────────────
-
-
-class _TutorialsDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("PressReady \u2014 Tutorials & Documentation")
-        self.resize(720, 600)
-        layout = QVBoxLayout(self)
-        browser = QTextBrowser()
-        browser.setOpenExternalLinks(True)
-        browser.setHtml(_TUTORIALS_HTML)
-        layout.addWidget(browser)
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btns.rejected.connect(self.close)
-        layout.addWidget(btns)
-
-
-class _SettingsDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self.resize(400, 250)
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(
-            "Application settings will be available here in a future update.\n\n"
-            "Planned:\n"
-            "  \u2022 Default sheet size & margins\n"
-            "  \u2022 Preview quality (DPI)\n"
-            "  \u2022 Default marks to add\n"
-            "  \u2022 Export options (compression, garbage collection)"
-        ))
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btns.rejected.connect(self.close)
-        layout.addWidget(btns)
-
-
-# ── main window ──────────────────────────────────────
-
-
 def app_icon() -> QIcon:
-    import sys, pathlib
     if getattr(sys, "frozen", False):
         base = pathlib.Path(sys._MEIPASS) / "assets" / "icons"
     else:
         base = pathlib.Path(__file__).resolve().parent.parent.parent / "assets" / "icons"
     icon = QIcon()
-    for sz in (16, 24, 32, 48, 64, 128, 256):
-        p = base / f"icon_{sz}x{sz}.png"
+    for size in (16, 24, 32, 48, 64, 128, 256):
+        p = base / f"icon_{size}x{size}.png"
         if p.exists():
             icon.addPixmap(QPixmap(str(p)))
     return icon
 
 
+# ── export worker ────────────────────────────────────
+
+class _ExportWorker(QThread):
+    progress = pyqtSignal(int, int)
+    done = pyqtSignal(int, str)
+    failed = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._project: Optional[Project] = None
+        self._output = ""
+        self._cancel = False
+
+    def setup(self, project: Project, output_path: str):
+        self._project = project
+        self._output = output_path
+        self._cancel = False
+
+    def cancel(self):
+        self._cancel = True
+
+    def run(self):
+        try:
+            def report(current, total):
+                if self._cancel:
+                    raise _Cancelled()
+                self.progress.emit(current, total)
+            self.done.emit(impose(self._project, self._output, progress_callback=report),
+                           self._output)
+        except _Cancelled:
+            self.failed.emit("Export cancelled")
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class _Cancelled(Exception):
+    """Raised inside the worker when the user cancels — the only way to stop mid-sheet."""
+
+
+# ── dialogs ──────────────────────────────────────────
+
+class _TutorialsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("PressReady — Tutorials & Reference")
+        self.resize(760, 640)
+        column = QVBoxLayout(self)
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setHtml(tutorials_html())
+        column.addWidget(browser)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.close)
+        column.addWidget(buttons)
+
+
+# ── main window ──────────────────────────────────────
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setStyleSheet(_DARK_STYLE)
+        self.setStyleSheet(t.stylesheet())
         self.setWindowIcon(app_icon())
-        self._update_title()
         self.setMinimumSize(1100, 750)
         self.resize(1440, 900)
         self.setAcceptDrops(True)
 
-        self._project = Project()
-        self._recent_files: list[str] = []
-        self._progress_dlg: Optional[QProgressDialog] = None
+        self._source_path = ""
+        self._source_doc = None   # kept open so preflight need not reopen it
+        self._findings: list = []
+        self._recent: list[str] = []
+        self._progress: Optional[QProgressDialog] = None
         self._settings = QSettings("PressReady", "PressReady2")
 
-        self._export_worker = _ExportWorker(self)
-        self._export_worker.progress.connect(self._on_export_progress)
-        self._export_worker.finished.connect(self._on_export_done)
-        self._export_worker.error.connect(self._on_export_err)
+        self._store = ValueStore(self)
+        self._store.changed.connect(self._on_values_changed)
 
-        self._load_recent_files()
+        self._export = _ExportWorker(self)
+        self._export.progress.connect(self._on_export_progress)
+        self._export.done.connect(self._on_export_done)
+        self._export.failed.connect(self._on_export_failed)
+
+        self._update_title()
+        self._load_recent()
         self._build_menubar()
         self._build_main_area()
-        self._connect_signals()
+        self._on_values_changed()
 
     # ── title ────────────────────────────────────
 
     def _update_title(self, filename: str = ""):
-        if filename:
-            self.setWindowTitle(f"{_APP_TITLE} \u2014 {filename}")
-        else:
-            self.setWindowTitle(f"{_APP_TITLE} \u2014 PDF Imposition Tool")
+        suffix = filename or "PDF Imposition"
+        self.setWindowTitle(f"{_APP_TITLE} — {suffix}")
 
-    # ── menu bar ─────────────────────────────────
+    # ── menus ────────────────────────────────────
 
     def _build_menubar(self):
-        mb = self.menuBar()
+        bar = self.menuBar()
 
-        # File
-        fm = mb.addMenu("&File")
-        self._act_open = QAction("&Open PDF\u2026", self)
-        self._act_open.setShortcut(QKeySequence("Ctrl+O"))
-        self._act_open.triggered.connect(self._on_open)
-        fm.addAction(self._act_open)
-
-        self._recent_menu = fm.addMenu("Open &Recent")
+        file_menu = bar.addMenu("&File")
+        self._act_open = QAction("&Open PDF…", self, shortcut=QKeySequence("Ctrl+O"),
+                                 triggered=self._on_open)
+        file_menu.addAction(self._act_open)
+        self._recent_menu = file_menu.addMenu("Open &Recent")
         self._rebuild_recent_menu()
 
-        self._act_close = QAction("&Close PDF", self)
-        self._act_close.setShortcut(QKeySequence("Ctrl+F4"))
-        self._act_close.setEnabled(False)
-        self._act_close.triggered.connect(self._on_close_pdf)
-        fm.addAction(self._act_close)
+        self._act_close = QAction("&Close PDF", self, shortcut=QKeySequence("Ctrl+F4"),
+                                  enabled=False, triggered=self._on_close_pdf)
+        file_menu.addAction(self._act_close)
+        file_menu.addSeparator()
 
-        fm.addSeparator()
-        self._act_generate = QAction("&Generate PDF", self)
-        self._act_generate.setShortcut(QKeySequence("Ctrl+G"))
-        self._act_generate.setEnabled(False)
-        self._act_generate.triggered.connect(self._on_export)
-        fm.addAction(self._act_generate)
+        self._act_generate = QAction("&Generate PDF", self, shortcut=QKeySequence("Ctrl+G"),
+                                     enabled=False, triggered=self._on_export)
+        file_menu.addAction(self._act_generate)
+        file_menu.addSeparator()
+        file_menu.addAction(QAction("Save &Preset…", self, triggered=self._on_save_preset))
+        file_menu.addAction(QAction("&Load Preset…", self, triggered=self._on_load_preset))
+        file_menu.addSeparator()
+        file_menu.addAction(QAction("&Quit", self, shortcut=QKeySequence("Alt+F4"),
+                                    triggered=self.close))
 
-        fm.addSeparator()
-        fm.addAction(QAction("&Settings\u2026", self, triggered=self._on_settings))
-        fm.addSeparator()
-        fm.addAction(QAction("&Quit PressReady", self,
-                             shortcut=QKeySequence("Alt+F4"), triggered=self.close))
+        edit_menu = bar.addMenu("&Edit")
+        self._act_undo = QAction("&Undo", self, shortcut="Ctrl+Z", enabled=False,
+                                 triggered=self._undo)
+        self._act_redo = QAction("&Redo", self, shortcut="Ctrl+Y", enabled=False,
+                                 triggered=self._redo)
+        edit_menu.addAction(self._act_undo)
+        edit_menu.addAction(self._act_redo)
+        edit_menu.addSeparator()
+        edit_menu.addAction(QAction("Reset &All Settings", self, triggered=self._on_reset_all))
 
-        # Edit
-        em = mb.addMenu("&Edit")
-        em.addAction(QAction("&Undo", self, shortcut="Ctrl+Z", enabled=False))
-        em.addAction(QAction("&Redo", self, shortcut="Ctrl+Y", enabled=False))
-        em.addSeparator()
-        em.addAction(QAction("Select &All", self, shortcut="Ctrl+A", enabled=False))
+        view_menu = bar.addMenu("&View")
+        view_menu.addAction(QAction("Zoom &In", self, shortcut="Ctrl++",
+                                    triggered=lambda: self._canvas.zoom_in()))
+        view_menu.addAction(QAction("Zoom &Out", self, shortcut="Ctrl+-",
+                                    triggered=lambda: self._canvas.zoom_out()))
+        view_menu.addAction(QAction("&Reset Zoom", self, shortcut="Ctrl+0",
+                                    triggered=lambda: self._canvas.fit_width()))
+        units_menu = view_menu.addMenu("&Units")
+        unit_group = QActionGroup(self)
+        unit_group.setExclusive(True)
+        for unit in Unit:
+            action = QAction(f"{unit.name.title()} ({unit.value})", self, checkable=True,
+                             checked=(unit is Unit.MM))
+            action.triggered.connect(lambda _, u=unit: self._on_unit_changed(u))
+            unit_group.addAction(action)
+            units_menu.addAction(action)
+        view_menu.addSeparator()
 
-        # View
-        vm = mb.addMenu("&View")
-        vm.addAction(QAction("Zoom &In", self, shortcut="Ctrl++",
-                              triggered=lambda: self._canvas.zoom_in()))
-        vm.addAction(QAction("Zoom &Out", self, shortcut="Ctrl+-",
-                              triggered=lambda: self._canvas.zoom_out()))
-        vm.addAction(QAction("&Reset Zoom", self, shortcut="Ctrl+0",
-                              triggered=lambda: self._canvas.fit_width()))
-        vm.addSeparator()
+        self._act_nums = QAction("Show Page &Numbers", self, checkable=True, checked=True,
+                                 shortcut="Alt+1")
+        self._act_frames = QAction("Show Cut &Lines", self, checkable=True, checked=True,
+                                   shortcut="Alt+2")
+        self._act_tops = QAction("Show Page &Tops", self, checkable=True, checked=False,
+                                 shortcut="Alt+3")
+        self._act_previews = QAction("Show Page Pre&views", self, checkable=True, checked=True,
+                                     shortcut="Alt+4")
+        for action in (self._act_nums, self._act_frames, self._act_tops, self._act_previews):
+            action.toggled.connect(self._on_view_toggle)
+            view_menu.addAction(action)
 
-        self._act_nums = QAction("Show Page &Numbers", self, checkable=True,
-                                  checked=True, shortcut="Alt+1")
-        self._act_nums.toggled.connect(self._on_view_toggle)
-        vm.addAction(self._act_nums)
+        help_menu = bar.addMenu("&Help")
+        help_menu.addAction(QAction("&Tutorials", self, shortcut="F1",
+                                    triggered=self._on_tutorials))
+        help_menu.addAction(QAction("&Preflight…", self, shortcut="F7",
+                                    triggered=self._show_preflight_details))
+        help_menu.addSeparator()
+        help_menu.addAction(QAction("Open &System Folder", self, triggered=self._on_sysdir))
+        help_menu.addSeparator()
+        help_menu.addAction(QAction("&About…", self, triggered=self._on_about))
 
-        self._act_frames = QAction("Show Page &Frames", self, checkable=True,
-                                    checked=True, shortcut="Alt+2")
-        self._act_frames.toggled.connect(self._on_view_toggle)
-        vm.addAction(self._act_frames)
-
-        self._act_tops = QAction("Show Page &Tops", self, checkable=True,
-                                  checked=False, shortcut="Alt+3")
-        self._act_tops.toggled.connect(self._on_view_toggle)
-        vm.addAction(self._act_tops)
-
-        self._act_previews = QAction("Show Page Pre&views", self, checkable=True,
-                                      checked=True, shortcut="Alt+4")
-        self._act_previews.toggled.connect(self._on_view_toggle)
-        vm.addAction(self._act_previews)
-
-        # Help
-        hm = mb.addMenu("&Help")
-        hm.addAction(QAction("&Tutorials", self, shortcut="F1",
-                              triggered=self._on_tutorials))
-        hm.addSeparator()
-        hm.addAction(QAction("Open &System Folder", self, triggered=self._on_sysdir))
-        hm.addSeparator()
-        hm.addAction(QAction("&About\u2026", self, triggered=self._on_about))
-
-    # ── main area (two-column layout) ────────────
+    # ── layout ───────────────────────────────────
 
     def _build_main_area(self):
         central = QWidget()
@@ -541,201 +380,263 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ─── left column: toolbar + canvas ───
         left = QWidget()
-        left_v = QVBoxLayout(left)
-        left_v.setContentsMargins(0, 0, 0, 0)
-        left_v.setSpacing(0)
-
-        left_v.addWidget(self._create_toolbar())
-
+        column = QVBoxLayout(left)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        column.addWidget(self._create_toolbar())
+        column.addWidget(self._create_preflight_bar())
         self._canvas = SheetCanvas()
-        left_v.addWidget(self._canvas, 1)
-
+        column.addWidget(self._canvas, 1)
         root.addWidget(left, 1)
 
-        # ─── right column: icon tabs + content ───
         root.addWidget(self._create_settings_panel())
 
-        # ─── status bar ───
         self._status = QStatusBar()
         self.setStatusBar(self._status)
-        self._status.showMessage("Ready \u2014 open a PDF to get started")
-
-    # ── toolbar (left column only) ───────────────
+        self._status.showMessage("Ready — open a PDF to get started")
 
     def _create_toolbar(self):
         bar = QFrame()
-        bar.setFixedHeight(38)
-        bar.setObjectName("tb")
+        bar.setFixedHeight(40)
+        bar.setObjectName("toolbar")
         bar.setStyleSheet(
-            f"#tb {{ background: {_BG3}; border-bottom: 1px solid {_BORDER}; }}"
-        )
+            f"#toolbar {{ background: {t.RAISED}; border-bottom: 1px solid {t.BORDER}; }}")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(t.SPACE_3, t.SPACE_1, t.SPACE_3, t.SPACE_1)
+        row.setSpacing(2)
 
-        h = QHBoxLayout(bar)
-        h.setContentsMargins(8, 3, 8, 3)
-        h.setSpacing(3)
+        columns = QButtonGroup(self)
+        columns.setExclusive(True)
+        for count, icon, tip in ((1, _ico_1col(), "Single column"),
+                                 (2, _ico_2col(), "Two columns"),
+                                 (4, _ico_4col(), "Four columns")):
+            button = _tool_btn(icon, tip, checkable=True, checked=(count == 2))
+            columns.addButton(button, count)
+            row.addWidget(button)
+        columns.idClicked.connect(lambda n: self._canvas.set_columns(n))
 
-        # column layout (exclusive toggle group) — stays left
-        col_grp = QButtonGroup(self)
-        col_grp.setExclusive(True)
+        row.addStretch(1)
+        for icon, tip, slot in (
+            (_ico_zoom(True), "Zoom in", lambda: self._canvas.zoom_in()),
+            (_ico_zoom(False), "Zoom out", lambda: self._canvas.zoom_out()),
+        ):
+            button = _tool_btn(icon, tip)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+        row.addWidget(_vsep())
+        for icon, tip, slot in (
+            (_ico_fit_width(), "Fit to width", lambda: self._canvas.fit_width()),
+            (_ico_fit_page(), "Fit whole sheet", lambda: self._canvas.fit_page()),
+            (_ico_actual(), "Actual size (1:1)", lambda: self._canvas.actual_size()),
+        ):
+            button = _tool_btn(icon, tip)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+        row.addStretch(1)
 
-        btn1 = _make_tool_btn(_ico_1col(), "Single column view", checkable=True)
-        btn2 = _make_tool_btn(_ico_2col(), "Two column view", checkable=True, checked=True)
-        btn4 = _make_tool_btn(_ico_4col(), "Four column view", checkable=True)
-
-        col_grp.addButton(btn1, 1)
-        col_grp.addButton(btn2, 2)
-        col_grp.addButton(btn4, 4)
-        col_grp.idClicked.connect(lambda n: self._canvas.set_columns(n))
-
-        h.addWidget(btn1)
-        h.addWidget(btn2)
-        h.addWidget(btn4)
-
-        # ── centered group: zoom + fit ──
-        h.addStretch(1)
-
-        zi = _make_tool_btn(_ico_zoom_in(), "Zoom in")
-        zi.clicked.connect(lambda: self._canvas.zoom_in())
-        h.addWidget(zi)
-
-        zo = _make_tool_btn(_ico_zoom_out(), "Zoom out")
-        zo.clicked.connect(lambda: self._canvas.zoom_out())
-        h.addWidget(zo)
-
-        h.addWidget(_vsep())
-
-        fw = _make_tool_btn(_ico_fit_width(), "Fit to width")
-        fw.clicked.connect(lambda: self._canvas.fit_width())
-        h.addWidget(fw)
-
-        fp = _make_tool_btn(_ico_fit_page(), "Fit to page")
-        fp.clicked.connect(lambda: self._canvas.fit_page())
-        h.addWidget(fp)
-
-        ac = _make_tool_btn(_ico_actual(), "Actual size (1:1)")
-        ac.clicked.connect(lambda: self._canvas.actual_size())
-        h.addWidget(ac)
-
-        h.addStretch(1)
-
-        # Generate PDF — stays right
-        self._gen_btn = QPushButton("  Generate PDF  ")
-        self._gen_btn.setEnabled(False)
-        self._gen_btn.setStyleSheet(
-            f"QPushButton {{ background: {_ACCENT}; color: #fff; border: none;"
-            f"              padding: 6px 18px; border-radius: 4px;"
-            f"              font-weight: bold; font-size: 12px; }}"
-            f"QPushButton:hover {{ background: {_ACCENT_HOVER}; }}"
-            f"QPushButton:pressed {{ background: {_ACCENT_PRESS}; }}"
-            f"QPushButton:disabled {{ background: #555; color: {_TEXT_DIM}; }}"
-        )
-        self._gen_btn.clicked.connect(self._on_export)
-        h.addWidget(self._gen_btn)
-
+        self._zoom_label = QLabel("")
+        self._zoom_label.setStyleSheet(f"color: {t.FG_FAINT}; font-size: {t.TEXT_2XS}px;")
+        row.addWidget(self._zoom_label)
         return bar
 
-    # ── settings panel (right column) ────────────
+    def _create_preflight_bar(self):
+        """
+        A strip that says what's wrong while there's still time to fix it.
+
+        v2.0.0 only reported trouble by raising at export — "margins too large" arrived
+        after the operator hit Generate, and subtler problems arrived at the guillotine.
+        """
+        self._preflight_bar = QFrame()
+        self._preflight_bar.setObjectName("preflight")
+        self._preflight_bar.setVisible(False)
+        row = QHBoxLayout(self._preflight_bar)
+        row.setContentsMargins(t.SPACE_3, t.SPACE_2, t.SPACE_3, t.SPACE_2)
+        row.setSpacing(t.SPACE_2)
+
+        self._preflight_text = QLabel("")
+        self._preflight_text.setWordWrap(True)
+        row.addWidget(self._preflight_text, 1)
+
+        self._preflight_more = QPushButton("Details")
+        self._preflight_more.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._preflight_more.clicked.connect(self._show_preflight_details)
+        row.addWidget(self._preflight_more, 0)
+        return self._preflight_bar
+
+    def _run_preflight(self):
+        from pressready.engine.preflight import Severity, preflight
+
+        self._findings = []
+        if self._source_path:
+            try:
+                self._findings = preflight(self.build_project(), self._source_doc)
+            except Exception:
+                self._findings = []  # never let a check break the app it is checking
+
+        # The strip is for things that need doing something about. Notes are true but
+        # not urgent; they stay in Details (Help > Preflight) rather than sitting on
+        # screen forever and teaching the operator to tune the strip out.
+        loud = [f for f in self._findings
+                if f.severity in (Severity.ERROR, Severity.WARNING)]
+        notes = len(self._findings) - len(loud)
+        if not loud:
+            self._preflight_bar.setVisible(False)
+            if notes and self._source_path:
+                self._status.showMessage(
+                    f"{notes} preflight note{'s' if notes > 1 else ''} — Help \u2192 Preflight")
+            return
+
+        worst = loud[0]
+        colour = {Severity.ERROR: t.DESTRUCTIVE,
+                  Severity.WARNING: t.ACCENT,
+                  Severity.NOTE: t.FG_MUTED}[worst.severity]
+        self._preflight_bar.setStyleSheet(
+            f"#preflight {{ background: {t.RAISED}; border-bottom: 1px solid {colour}; }}")
+        extra = len(self._findings) - 1
+        suffix = f"   (+{extra} more)" if extra > 0 else ""
+        self._preflight_text.setText(
+            f"<span style='color:{colour}'><b>{worst.severity.value}</b></span> "
+            f"<span style='color:{t.FG}'>{worst.message}</span>"
+            f"<span style='color:{t.FG_FAINT}'>{suffix}</span>"
+        )
+        self._preflight_more.setVisible(bool(worst.detail) or extra > 0)
+        self._preflight_bar.setVisible(True)
+
+    def _show_preflight_details(self):
+        if not getattr(self, "_findings", None):
+            QMessageBox.information(self, "Preflight", "Nothing to report — this job looks fine.")
+            return
+        body = "".join(
+            f"<p style='margin:0 0 10px 0'><b>{f.severity.value}:</b> {f.message}"
+            + (f"<br><span style='color:{t.FG_MUTED}'>{f.detail}</span>" if f.detail else "")
+            + "</p>"
+            for f in self._findings
+        )
+        QMessageBox.information(self, "Preflight", f"<div>{body}</div>")
+
+    def _collection_for(self, control):
+        """Supply the bespoke editors for the two genuinely growable settings."""
+        if control.target == "preprocessors":
+            editor = PreprocessorsTab()
+            editor.changed.connect(
+                lambda: self._store.set("preprocessors", editor.get_steps()))
+        elif control.target == "marks":
+            editor = MarksTab()
+            editor.changed.connect(lambda: self._store.set("marks", editor.get_marks()))
+        else:
+            return None
+        self._collections[control.target] = editor
+        return editor
 
     def _create_settings_panel(self):
         panel = QFrame()
-        panel.setObjectName("sp")
-        panel.setFixedWidth(310)
+        panel.setObjectName("settings")
+        panel.setFixedWidth(t.PANEL_W)
         panel.setStyleSheet(
-            f"#sp {{ background: {_BG2}; border-left: 1px solid {_BORDER}; }}"
-        )
-        v = QVBoxLayout(panel)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(0)
+            f"#settings {{ background: {t.SURFACE}; border-left: 1px solid {t.BORDER}; }}")
+        column = QVBoxLayout(panel)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
 
-        # ─ icon tab bar ─
         self._tab_bar = QTabBar()
         self._tab_bar.setExpanding(True)
         self._tab_bar.setDrawBase(False)
         self._tab_bar.setIconSize(QSize(_TAB_SZ, _TAB_SZ))
         self._tab_bar.setStyleSheet(
-            f"QTabBar {{ background: {_BG3}; }}"
+            f"QTabBar {{ background: {t.RAISED}; }}"
             f"QTabBar::tab {{ padding: 9px 16px; border: none;"
-            f"               border-bottom: 3px solid transparent; }}"
-            f"QTabBar::tab:selected {{ border-bottom: 3px solid {_ACCENT};"
-            f"                        background: #383838; }}"
-            f"QTabBar::tab:hover:!selected {{ background: #353535; }}"
+            f"                border-bottom: 2px solid transparent; }}"
+            f"QTabBar::tab:selected {{ border-bottom: 2px solid {t.ACCENT};"
+            f"                         background: {t.SELECTED_WASH}; }}"
+            f"QTabBar::tab:hover:!selected {{ background: {t.HOVER_WASH}; }}"
         )
+        for index, tab in enumerate(SCHEMA):
+            self._tab_bar.addTab(_TAB_ICONS[index](), "")
+            self._tab_bar.setTabToolTip(index, tab.name)
+        column.addWidget(self._tab_bar)
 
-        self._tab_bar.addTab(_ico_tab_preproc(), "")
-        self._tab_bar.addTab(_ico_tab_layout(), "")
-        self._tab_bar.addTab(_ico_tab_sheet(), "")
-        self._tab_bar.addTab(_ico_tab_marks(), "")
-
-        self._tab_bar.setTabToolTip(0, "Preprocessors")
-        self._tab_bar.setTabToolTip(1, "Layout")
-        self._tab_bar.setTabToolTip(2, "Sheet")
-        self._tab_bar.setTabToolTip(3, "Marks")
-
-        v.addWidget(self._tab_bar)
-
-        # ─ active-tab heading ─
-        self._tab_heading = QLabel(_TAB_NAMES[0])
-        self._tab_heading.setStyleSheet(
-            f"font-size: 16px; font-weight: bold; color: {_TEXT};"
-            f"padding: 10px 14px 6px 14px; background: {_BG2};"
+        self._heading = QLabel(SCHEMA[0].name)
+        self._heading.setStyleSheet(
+            f"font-size: {t.TEXT_LG}px; font-weight: 600; color: {t.FG};"
+            f"padding: {t.SPACE_3}px {t.SPACE_3}px {t.SPACE_2}px {t.SPACE_3}px;"
         )
-        v.addWidget(self._tab_heading)
+        column.addWidget(self._heading)
 
-        sep = QFrame()
-        sep.setFixedHeight(1)
-        sep.setStyleSheet(f"background: {_BORDER};")
-        v.addWidget(sep)
-
-        # ─ stacked tab content ─
+        self._collections: dict = {}
         self._stack = QStackedWidget()
-
-        self._preproc_tab = PreprocessorsTab()
-        self._layout_tab = LayoutTab()
-        self._sheet_tab = SheetTab()
-        self._marks_tab = MarksTab()
-
-        self._stack.addWidget(_scrollable(self._preproc_tab))
-        self._stack.addWidget(_scrollable(self._layout_tab))
-        self._stack.addWidget(_scrollable(self._sheet_tab))
-        self._stack.addWidget(_scrollable(self._marks_tab))
-
-        v.addWidget(self._stack, 1)
-
+        self._tabs = []
+        for tab in SCHEMA:
+            page = SchemaTab(tab, self._store, self._collection_for)
+            self._tabs.append(page)
+            area = QScrollArea()
+            area.setWidget(page)
+            area.setWidgetResizable(True)
+            area.setFrameShape(QFrame.Shape.NoFrame)
+            area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self._stack.addWidget(area)
+        column.addWidget(self._stack, 1)
         self._tab_bar.currentChanged.connect(self._on_tab_switch)
 
+        column.addWidget(self._create_footer())
         return panel
 
-    def _on_tab_switch(self, idx):
-        self._stack.setCurrentIndex(idx)
-        if 0 <= idx < len(_TAB_NAMES):
-            self._tab_heading.setText(_TAB_NAMES[idx])
+    def _create_footer(self):
+        """
+        Sticky footer for the one action that delivers the product.
 
-    # ── signal wiring ────────────────────────────
+        Toolcraft keeps final delivery actions pinned rather than in the toolbar, so
+        the thing you came to do is always reachable without hunting.
+        """
+        footer = QFrame()
+        footer.setObjectName("footer")
+        footer.setStyleSheet(
+            f"#footer {{ background: {t.RAISED}; border-top: 1px solid {t.BORDER}; }}")
+        row = QVBoxLayout(footer)
+        row.setContentsMargins(t.SPACE_3, t.SPACE_3, t.SPACE_3, t.SPACE_3)
 
-    def _connect_signals(self):
-        self._preproc_tab.changed.connect(self._on_settings_changed)
-        self._layout_tab.changed.connect(self._on_settings_changed)
-        self._sheet_tab.changed.connect(self._on_settings_changed)
-        self._marks_tab.changed.connect(self._on_settings_changed)
+        self._generate = QPushButton("Generate PDF")
+        self._generate.setProperty("accent", True)
+        self._generate.setEnabled(False)
+        self._generate.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._generate.clicked.connect(self._on_export)
+        row.addWidget(self._generate)
+        return footer
 
-    # ── project assembly ─────────────────────────
+    def _on_tab_switch(self, index):
+        self._stack.setCurrentIndex(index)
+        if 0 <= index < len(SCHEMA):
+            self._heading.setText(SCHEMA[index].name)
+
+    # ── the product ──────────────────────────────
 
     def build_project(self) -> Project:
-        p = Project()
-        p.source_pdf_path = self._project.source_pdf_path
-        p.preprocessors = self._preproc_tab.get_steps()
-        p.layout = self._layout_tab.get_settings()
-        p.sheet = self._sheet_tab.get_settings()
-        p.marks = self._marks_tab.get_marks()
-        return p
+        return self._store.to_project(self._source_path)
 
-    def _on_settings_changed(self):
-        if not self._project.source_pdf_path:
-            return
-        project = self.build_project()
-        self._canvas.update_project(project)
+    def _on_values_changed(self):
+        values = self._store.values()
+        for tab in self._tabs:
+            tab.refresh(values)
+        self._act_undo.setEnabled(self._store.can_undo())
+        self._act_redo.setEnabled(self._store.can_redo())
+        self._run_preflight()
+        if self._source_path:
+            self._canvas.update_project(self.build_project())
+
+    def _undo(self):
+        self._store.undo()
+        self._resync_widgets()
+        self._rebuild_collection_editors()
+
+    def _redo(self):
+        self._store.redo()
+        self._resync_widgets()
+        self._rebuild_collection_editors()
+
+    def _on_unit_changed(self, unit):
+        self._store.set_unit(unit)
+        self._settings.setValue("display_unit", unit.name)
+        self._status.showMessage(f"Lengths shown in {unit.value}")
 
     def _on_view_toggle(self, _=None):
         self._canvas.set_overlays(
@@ -745,7 +646,7 @@ class MainWindow(QMainWindow):
             show_previews=self._act_previews.isChecked(),
         )
 
-    # ── file operations ──────────────────────────
+    # ── files ────────────────────────────────────
 
     def _on_open(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -761,146 +662,189 @@ class MainWindow(QMainWindow):
             import fitz
             doc = fitz.open(path)
             count = len(doc)
-            doc.close()
-        except Exception as e:
-            self._status.showMessage(f"Error: {e}")
+        except Exception as exc:
+            self._status.showMessage(f"Could not open: {exc}")
             return
 
-        self._project.source_pdf_path = path
+        self._close_source_doc()
+        self._source_doc = doc
+        self._source_path = path
         name = os.path.basename(path)
         self._update_title(name)
-        self._status.showMessage(f"{name} \u2014 {count} pages")
-        self._act_close.setEnabled(True)
-        self._act_generate.setEnabled(True)
-        self._gen_btn.setEnabled(True)
-
+        self._status.showMessage(f"{name} — {count} page{'s' if count != 1 else ''}")
+        for widget in (self._act_close, self._act_generate, self._generate):
+            widget.setEnabled(True)
         self._add_recent(path)
-        self._on_settings_changed()
+        self._on_values_changed()
+
+    def _close_source_doc(self):
+        if self._source_doc is not None:
+            try:
+                self._source_doc.close()
+            except Exception:
+                pass
+            self._source_doc = None
 
     def _on_close_pdf(self):
-        self._project.source_pdf_path = ""
+        self._close_source_doc()
+        self._source_path = ""
         self._update_title()
-        self._act_close.setEnabled(False)
-        self._act_generate.setEnabled(False)
-        self._gen_btn.setEnabled(False)
+        for widget in (self._act_close, self._act_generate, self._generate):
+            widget.setEnabled(False)
         self._canvas.clear_all()
+        self._run_preflight()
         self._status.showMessage("PDF closed")
 
-    def dragEnterEvent(self, ev: QDragEnterEvent):
-        if ev.mimeData().hasUrls():
-            u = ev.mimeData().urls()
-            if u and u[0].toLocalFile().lower().endswith(".pdf"):
-                ev.acceptProposedAction()
-                return
-        ev.ignore()
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        urls = event.mimeData().urls() if event.mimeData().hasUrls() else []
+        if urls and urls[0].toLocalFile().lower().endswith(".pdf"):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
-    def dropEvent(self, ev: QDropEvent):
-        urls = ev.mimeData().urls()
-        if urls:
-            p = urls[0].toLocalFile()
-            if p.lower().endswith(".pdf"):
-                self.load_pdf(p)
-                ev.acceptProposedAction()
-                return
-        ev.ignore()
+    def dropEvent(self, event: QDropEvent):
+        urls = event.mimeData().urls()
+        if urls and urls[0].toLocalFile().lower().endswith(".pdf"):
+            self.load_pdf(urls[0].toLocalFile())
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
-    # ── recent files ─────────────────────────────
+    # ── recent ───────────────────────────────────
 
-    def _load_recent_files(self):
+    def _load_recent(self):
         raw = self._settings.value("recent_files", [])
-        self._recent_files = [f for f in (raw or []) if os.path.isfile(f)]
-
-    def _save_recent_files(self):
-        self._settings.setValue("recent_files", self._recent_files[:_MAX_RECENT])
+        self._recent = [f for f in (raw or []) if os.path.isfile(f)]
 
     def _add_recent(self, path: str):
         path = os.path.normpath(path)
-        if path in self._recent_files:
-            self._recent_files.remove(path)
-        self._recent_files.insert(0, path)
-        self._recent_files = self._recent_files[:_MAX_RECENT]
-        self._save_recent_files()
+        if path in self._recent:
+            self._recent.remove(path)
+        self._recent.insert(0, path)
+        del self._recent[_MAX_RECENT:]
+        self._settings.setValue("recent_files", self._recent)
         self._rebuild_recent_menu()
 
     def _rebuild_recent_menu(self):
         self._recent_menu.clear()
-        if not self._recent_files:
-            a = self._recent_menu.addAction("(no recent files)")
-            a.setEnabled(False)
+        if not self._recent:
+            self._recent_menu.addAction("(no recent files)").setEnabled(False)
             return
-        for p in self._recent_files:
-            a = self._recent_menu.addAction(os.path.basename(p))
-            a.setData(p)
-            a.triggered.connect(lambda _, fp=p: self.load_pdf(fp))
+        for path in self._recent:
+            action = self._recent_menu.addAction(os.path.basename(path))
+            action.setToolTip(path)
+            action.triggered.connect(lambda _, p=path: self.load_pdf(p))
         self._recent_menu.addSeparator()
         self._recent_menu.addAction("Clear Recent", self._clear_recent)
 
     def _clear_recent(self):
-        self._recent_files.clear()
-        self._save_recent_files()
+        self._recent.clear()
+        self._settings.setValue("recent_files", [])
         self._rebuild_recent_menu()
 
-    # ── export / generate ────────────────────────
+    # ── presets ──────────────────────────────────
+
+    def _on_save_preset(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Preset", "preset.pressready.json", "PressReady Preset (*.json)")
+        if not path:
+            return
+        from pressready.ui.presets import save_preset
+        try:
+            save_preset(path, self._store.values())
+            self._status.showMessage(f"Preset saved → {os.path.basename(path)}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Could not save preset", str(exc))
+
+    def _on_load_preset(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Preset", "", "PressReady Preset (*.json);;All Files (*)")
+        if not path:
+            return
+        from pressready.ui.presets import load_preset
+        try:
+            self._store.load(load_preset(path))
+            self._rebuild_collection_editors()
+            self._resync_widgets()
+            self._status.showMessage(f"Preset loaded — {os.path.basename(path)}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Could not load preset", str(exc))
+
+    def _on_reset_all(self):
+        from pressready.ui.schema import defaults
+        values = defaults()
+        values["preprocessors"] = []
+        values["marks"] = []
+        self._store.load(values)
+        self._rebuild_collection_editors()
+
+    def _resync_widgets(self):
+        values = self._store.values()
+        for tab in self._tabs:
+            tab.sync_from_store(values)
+
+    def _rebuild_collection_editors(self):
+        if "preprocessors" in self._collections:
+            self._collections["preprocessors"].set_steps(self._store.get("preprocessors") or [])
+        if "marks" in self._collections:
+            self._collections["marks"].set_marks(self._store.get("marks") or [])
+
+    # ── export ───────────────────────────────────
 
     def _on_export(self):
-        if not self._project.source_pdf_path:
+        if not self._source_path:
             return
         project = self.build_project()
-        base = os.path.splitext(os.path.basename(project.source_pdf_path))[0]
-        lt = project.layout
-        sfx = "booklet" if lt.layout_type == LayoutType.BOOKLET else f"{lt.nup}up"
-        suggested = f"{base}_{sfx}_{project.sheet.preset}.pdf"
+        base = os.path.splitext(os.path.basename(self._source_path))[0]
+        layout = project.layout
+        suffix = "booklet" if layout.layout_type == LayoutType.BOOKLET else f"{layout.nup}up"
+        suggested = f"{base}_{suffix}_{project.sheet.preset}.pdf"
 
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Imposed PDF", suggested, "PDF Files (*.pdf)")
         if not path:
             return
 
-        self._progress_dlg = QProgressDialog("Exporting\u2026", "Cancel", 0, 100, self)
-        self._progress_dlg.setWindowTitle("Exporting")
-        self._progress_dlg.setWindowModality(Qt.WindowModality.WindowModal)
-        self._progress_dlg.setMinimumDuration(0)
-        self._gen_btn.setEnabled(False)
-        self._export_worker.setup(project, path)
-        self._export_worker.start()
+        self._progress = QProgressDialog("Imposing…", "Cancel", 0, 100, self)
+        self._progress.setWindowTitle("Generating")
+        self._progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._progress.setMinimumDuration(0)
+        self._progress.canceled.connect(self._export.cancel)  # actually stops the work
+        self._generate.setEnabled(False)
+        self._export.setup(project, path)
+        self._export.start()
 
-    def _on_export_progress(self, cur, tot):
+    def _on_export_progress(self, current, total):
+        if not self._progress:
+            return
         try:
-            if self._progress_dlg and not self._progress_dlg.wasCanceled():
-                self._progress_dlg.setValue(int(cur / tot * 100) if tot else 0)
-                self._progress_dlg.setLabelText(f"Sheet {cur + 1} / {tot}")
+            self._progress.setValue(int(current / total * 100) if total else 0)
+            self._progress.setLabelText(f"Sheet {min(current + 1, total)} of {total}")
         except RuntimeError:
             pass
 
-    def _on_export_done(self, n, path):
+    def _close_progress(self):
         try:
-            if self._progress_dlg:
-                self._progress_dlg.setValue(100)
-                self._progress_dlg.close()
+            if self._progress:
+                self._progress.close()
         except RuntimeError:
             pass
-        self._progress_dlg = None
-        self._gen_btn.setEnabled(True)
-        self._status.showMessage(
-            f"Exported {n} sheet(s) \u2192 {os.path.basename(path)}")
-        QMessageBox.information(
-            self, "Export Complete", f"Exported {n} sheet(s) to:\n{path}")
+        self._progress = None
+        self._generate.setEnabled(bool(self._source_path))
 
-    def _on_export_err(self, msg):
-        try:
-            if self._progress_dlg:
-                self._progress_dlg.close()
-        except RuntimeError:
-            pass
-        self._progress_dlg = None
-        self._gen_btn.setEnabled(True)
-        self._status.showMessage(f"Export error: {msg}")
-        QMessageBox.critical(self, "Export Error", f"Failed:\n{msg}")
+    def _on_export_done(self, sheets, path):
+        self._close_progress()
+        self._status.showMessage(f"Exported {sheets} sheet(s) → {os.path.basename(path)}")
+        QMessageBox.information(self, "Export complete",
+                                f"Wrote {sheets} sheet(s) to:\n{path}")
 
-    # ── menu actions ─────────────────────────────
+    def _on_export_failed(self, message):
+        self._close_progress()
+        self._status.showMessage(message)
+        if message != "Export cancelled":
+            QMessageBox.critical(self, "Export failed", message)
 
-    def _on_settings(self):
-        _SettingsDialog(self).exec()
+    # ── help ─────────────────────────────────────
 
     def _on_tutorials(self):
         _TutorialsDialog(self).exec()
@@ -913,106 +857,20 @@ class MainWindow(QMainWindow):
             webbrowser.open(f"file://{folder}")
 
     def _on_about(self):
-        QMessageBox.about(self, "About PressReady v2",
-            f"<h2 style='color:{_ACCENT}'>PressReady v{__version__}</h2>"
-            "<p>Professional PDF Imposition Tool</p>"
-            "<p>Built with Python, PyQt6 &amp; PyMuPDF.</p>"
-            "<hr><p><b>Features:</b> N-Up, Booklet, Preprocessors, "
-            "Print Marks, WYSIWYG Preview, Vector Export.</p>"
-            "<p>&copy; 2026 PressReady Team</p>")
+        QMessageBox.about(
+            self, "About PressReady",
+            f"<h2 style='color:{t.ACCENT}'>PressReady {__version__}</h2>"
+            "<p>PDF imposition for commercial printing.</p>"
+            "<p>Built with Python, PyQt6 and PyMuPDF. Imposition is vector: pages are "
+            "embedded, never rasterized.</p>"
+            "<p>Licensed under the GNU AGPL v3.0.</p>"
+        )
 
     # ── cleanup ──────────────────────────────────
 
-    def closeEvent(self, ev):
+    def closeEvent(self, event):
+        self._close_source_doc()
         self._canvas.cleanup()
-        self._export_worker.wait()
-        super().closeEvent(ev)
-
-
-# ──────────────────────────────────────────────────────
-#  Tutorials HTML — dark themed
-# ──────────────────────────────────────────────────────
-
-_TUTORIALS_HTML = f"""\
-<html><head><style>
-body{{font-family:'Segoe UI',sans-serif;padding:16px;color:#d4d4d4;background:#1e1e1e}}
-h1{{color:{_ACCENT};border-bottom:2px solid {_ACCENT};padding-bottom:6px}}
-h2{{color:{_ACCENT};margin-top:24px}}h3{{color:#aaa;margin-top:18px}}
-code{{background:#3c3c3c;padding:2px 6px;border-radius:3px;font-size:13px;color:#ddd}}
-table{{border-collapse:collapse;margin:8px 0;width:100%}}
-td,th{{border:1px solid #3e3e42;padding:6px 10px;text-align:left}}
-th{{background:#2d2d2d;color:{_ACCENT}}}
-.tip{{background:#2a2a1a;border-left:4px solid {_ACCENT};padding:8px 12px;margin:10px 0}}
-</style></head><body>
-<h1>PressReady v2 &mdash; Tutorials &amp; Reference</h1>
-
-<h2>1. Getting Started</h2>
-<p>Use <b>File &rarr; Open PDF</b> (Ctrl+O) or <b>drag-and-drop</b> a PDF
-onto the window. The preview canvas shows all imposed sheets.</p>
-<p>Click <b style="color:{_ACCENT}">Generate PDF</b> (Ctrl+G) to export.</p>
-
-<h2>2. Toolbar</h2>
-<table>
-<tr><th>Icon</th><th>Action</th></tr>
-<tr><td>Single rect</td><td>1-column sheet view</td></tr>
-<tr><td>Two rects</td><td>2-column sheet view (default)</td></tr>
-<tr><td>Four rects</td><td>4-column sheet view</td></tr>
-<tr><td>Magnifier +</td><td>Zoom in</td></tr>
-<tr><td>Magnifier &minus;</td><td>Zoom out</td></tr>
-<tr><td>&harr; arrows</td><td>Fit sheets to width</td></tr>
-<tr><td>Rect +</td><td>Fit entire sheet in viewport</td></tr>
-<tr><td>1:1</td><td>Actual size</td></tr>
-</table>
-
-<h2>3. Settings Panel Tabs</h2>
-<p>The right panel uses icon tabs. Hover over each icon for its name,
-or look at the heading that appears when you click a tab.</p>
-
-<h2>4. Preprocessors Tab</h2>
-<table>
-<tr><th>Preprocessor</th><th>What it does</th></tr>
-<tr><td><b>Rotate Pages</b></td><td>Rotates every page (90&deg;/180&deg;/270&deg;)</td></tr>
-<tr><td><b>Scale Pages</b></td><td>Scales page size by a factor</td></tr>
-<tr><td><b>Reorder Pages</b></td><td><code>reverse</code> or <code>4,3,2,1</code></td></tr>
-</table>
-
-<h2>5. Layout Tab</h2>
-<p><b>N-Up:</b> 2 or 4 pages per sheet. <b>Booklet:</b> saddle-stitch reordering.</p>
-<p><b>Gutters:</b> horizontal/vertical gaps (mm). <b>Page Range:</b> e.g. <code>1-4,7</code>.</p>
-<p><b>Signatures:</b> multi-section booklets. <b>Page Creep:</b> compensate paper thickness.</p>
-
-<h2>6. Sheet Tab</h2>
-<p>Presets: A5&ndash;A2, Letter, Legal, Tabloid, Custom. Per-side margins. Landscape/Portrait.</p>
-
-<h2>7. Marks Tab</h2>
-<table>
-<tr><th>Mark</th><th>Purpose</th></tr>
-<tr><td>Crop Marks</td><td>Cut lines at page corners</td></tr>
-<tr><td>Trim Line</td><td>Gray border around trim area</td></tr>
-<tr><td>Registration</td><td>Crosshair targets for plate alignment</td></tr>
-<tr><td>Folding Marks</td><td>Dashed fold indicators (booklet)</td></tr>
-<tr><td>Text Label</td><td>Filename + sheet info in margin</td></tr>
-<tr><td>Collating Marks</td><td>Spine marks for sheet order verification</td></tr>
-</table>
-
-<h2>8. View Overlays</h2>
-<table>
-<tr><th>Toggle</th><th>Shortcut</th><th>Description</th></tr>
-<tr><td>Page Numbers</td><td>Alt+1</td><td>Magenta page numbers in each cell</td></tr>
-<tr><td>Page Frames</td><td>Alt+2</td><td>Magenta border around cells</td></tr>
-<tr><td>Page Tops</td><td>Alt+3</td><td>Magenta T-mark showing top edge</td></tr>
-<tr><td>Page Previews</td><td>Alt+4</td><td>Show/hide actual PDF content</td></tr>
-</table>
-
-<h2>9. Keyboard Shortcuts</h2>
-<table>
-<tr><td>Ctrl+O</td><td>Open PDF</td></tr>
-<tr><td>Ctrl+F4</td><td>Close PDF</td></tr>
-<tr><td>Ctrl+G</td><td>Generate PDF</td></tr>
-<tr><td>Ctrl++/&minus;</td><td>Zoom in/out</td></tr>
-<tr><td>Ctrl+0</td><td>Fit to width</td></tr>
-<tr><td>F1</td><td>Tutorials</td></tr>
-<tr><td>Alt+F4</td><td>Quit</td></tr>
-</table>
-</body></html>
-"""
+        self._export.cancel()
+        self._export.wait()
+        super().closeEvent(event)

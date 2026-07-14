@@ -103,22 +103,17 @@ class LayoutType(Enum):
     BOOKLET = "Booklet"
 
 
-class BookletType(Enum):
-    TWO_UP = "2-up"
-
-
 class BookletMode(Enum):
-    SHEETWISE = "Sheetwise"
-    WORK_AND_TURN = "Work and Turn"
-    WORK_AND_TUMBLE = "Work and Tumble"
+    """
+    How the folded sheets are assembled into the finished book.
+
+    SADDLE_STITCH nests every sheet inside the next and staples through the fold,
+    so the whole document is one signature. PERFECT_BOUND splits it into signatures
+    of ``signature_sheets`` sheets which are folded separately and *gathered* —
+    stacked spine-to-spine and glued — which is why the page order differs.
+    """
+    SADDLE_STITCH = "Saddle Stitch"
     PERFECT_BOUND = "Perfect Bound"
-
-
-class CreepMode(Enum):
-    SHIFT_BOTH = "Shift (move both edges)"
-    SHIFT_IN = "Shift In"
-    SHIFT_OUT = "Shift Out"
-    SCALE = "Scale"
 
 
 @dataclass
@@ -129,12 +124,13 @@ class LayoutSettings:
     nup: int = 2  # 2, 4
     rows: int = 0
     cols: int = 0
+    auto_rotate: bool = False  # turn a page 90° when that fits its cell better
 
     # Booklet
-    booklet_type: BookletType = BookletType.TWO_UP
-    booklet_mode: BookletMode = BookletMode.SHEETWISE
+    booklet_mode: BookletMode = BookletMode.SADDLE_STITCH
+    signature_sheets: int = 4  # sheets per signature; perfect-bound only
     right_to_left: bool = False
-    move_fillers_to_middle: bool = False
+    fillers_in_middle: bool = False  # pad in the centre instead of at the end
 
     # Gutters
     gutter_h_mm: float = 0.0
@@ -143,19 +139,13 @@ class LayoutSettings:
     # Page range (empty = all)
     page_range: str = ""
 
-    # Signatures
-    signatures_enabled: bool = False
-    signature_size: int = 1  # sheets per signature
-
-    # Folding
-    fold_in_parts: bool = False
-    fold_part_size: int = 1
-
-    # Page Creep
+    # Page creep — compensation for the fore-edge push-out of a folded signature.
+    # Both values are a shift *towards the spine*, interpolated across the nest by
+    # sheet depth; negatives shift away from it. Stated as explicit endpoints rather
+    # than derived from paper caliper, so the operator's measurement wins.
     creep_enabled: bool = False
-    creep_mode: CreepMode = CreepMode.SHIFT_BOTH
-    creep_outer_mm: float = 0.0
-    creep_inner_mm: float = 0.0
+    creep_outer_mm: float = 0.0  # outermost sheet, normally 0
+    creep_inner_mm: float = 0.0  # innermost sheet, the one that creeps most
 
 
 # ──────────────────────────────────────────────
@@ -196,11 +186,15 @@ class SheetSettings:
 
 class MarkType(Enum):
     CROP_MARKS = "Crop Marks"
+    GAP_CROP_MARKS = "Gap Crop Marks"
     TRIM_LINE = "Trim Line"
     REGISTRATION = "Registration Marks"
     FOLDING_MARKS = "Folding Marks"
-    TEXT_LABEL = "Text Label"
+    PERFORATION_MARKS = "Perforation Marks"
     COLLATING_MARKS = "Collating Marks"
+    COLOR_BAR = "Colour Bar"
+    TEXT_LABEL = "Text Label"
+    CUSTOM_MARK = "Custom Mark (PDF)"
 
 
 @dataclass
@@ -208,7 +202,7 @@ class MarkItem:
     mark_type: MarkType
     enabled: bool = True
 
-    # Crop marks
+    # Crop / gap crop marks
     crop_length_mm: float = 5.0
     crop_offset_mm: float = 3.0
     crop_width_pt: float = 0.5
@@ -217,8 +211,20 @@ class MarkItem:
     label_text: str = ""  # empty = auto (filename + sheet info)
     label_font_size: int = 8
 
-    # Folding marks
+    # Folding / perforation marks
     fold_line_length_mm: float = 10.0
+
+    # Colour bar
+    patch_size_mm: float = 5.0
+
+    # Custom mark: any PDF, stamped onto the sheet. Imposition Wizard ships
+    # placeholder PDFs for its bull's-eyes and colour bars, which gives the game
+    # away — a custom mark is just artwork placed by rule, and show_pdf_page
+    # already does that for us, vector and all.
+    mark_pdf_path: str = ""
+    mark_width_mm: float = 20.0
+    mark_x_mm: float = 10.0
+    mark_y_mm: float = 10.0
 
 
 # ──────────────────────────────────────────────

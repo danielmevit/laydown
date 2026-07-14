@@ -105,8 +105,51 @@ class MarksTab(QWidget):
         fl.addRow("Line length:", self._fold_len)
         self._stack.addWidget(fold_w)
 
+        # 4 — Custom mark: any PDF, stamped on the sheet
+        custom_w = QWidget()
+        xl = QFormLayout(custom_w)
+        picker = QHBoxLayout()
+        self._mark_path = QLineEdit()
+        self._mark_path.setPlaceholderText("a PDF to stamp on the sheet")
+        self._mark_path.textChanged.connect(self._on_param)
+        picker.addWidget(self._mark_path, stretch=1)
+        browse = QPushButton("…")
+        browse.setFixedWidth(28)
+        browse.clicked.connect(self._on_browse_mark)
+        picker.addWidget(browse)
+        xl.addRow("Artwork:", picker)
+
+        self._mark_w = QDoubleSpinBox()
+        self._mark_w.setRange(1, 500)
+        self._mark_w.setValue(20.0)
+        self._mark_w.setSuffix(" mm")
+        self._mark_w.valueChanged.connect(self._on_param)
+        xl.addRow("Width:", self._mark_w)
+
+        self._mark_x = QDoubleSpinBox()
+        self._mark_x.setRange(0, 5000)
+        self._mark_x.setValue(10.0)
+        self._mark_x.setSuffix(" mm")
+        self._mark_x.valueChanged.connect(self._on_param)
+        xl.addRow("From left:", self._mark_x)
+
+        self._mark_y = QDoubleSpinBox()
+        self._mark_y.setRange(0, 5000)
+        self._mark_y.setValue(10.0)
+        self._mark_y.setSuffix(" mm")
+        self._mark_y.valueChanged.connect(self._on_param)
+        xl.addRow("From top:", self._mark_y)
+        self._stack.addWidget(custom_w)
+
         root.addWidget(self._settings_group)
         root.addStretch()
+
+    def _on_browse_mark(self):
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose mark artwork", "", "PDF Files (*.pdf)")
+        if path:
+            self._mark_path.setText(path)
         self._settings_group.setVisible(False)
 
     # ── public ───────────────────────────────────
@@ -149,14 +192,24 @@ class MarksTab(QWidget):
         m = self._items[row]
         self._settings_group.setVisible(True)
 
-        if m.mark_type == MarkType.CROP_MARKS:
+        if m.mark_type in (MarkType.CROP_MARKS, MarkType.GAP_CROP_MARKS):
             self._stack.setCurrentIndex(1)
+            self._crop_len.setEnabled(m.mark_type == MarkType.CROP_MARKS)
             self._crop_len.blockSignals(True)
             self._crop_len.setValue(m.crop_length_mm)
             self._crop_len.blockSignals(False)
             self._crop_off.blockSignals(True)
             self._crop_off.setValue(m.crop_offset_mm)
             self._crop_off.blockSignals(False)
+        elif m.mark_type == MarkType.CUSTOM_MARK:
+            self._stack.setCurrentIndex(4)
+            for widget, value in ((self._mark_path, m.mark_pdf_path),
+                                  (self._mark_w, m.mark_width_mm),
+                                  (self._mark_x, m.mark_x_mm),
+                                  (self._mark_y, m.mark_y_mm)):
+                widget.blockSignals(True)
+                widget.setText(value) if widget is self._mark_path else widget.setValue(value)
+                widget.blockSignals(False)
         elif m.mark_type == MarkType.TEXT_LABEL:
             self._stack.setCurrentIndex(2)
             self._label_edit.blockSignals(True)
@@ -178,9 +231,14 @@ class MarksTab(QWidget):
         if row < 0 or row >= len(self._items):
             return
         m = self._items[row]
-        if m.mark_type == MarkType.CROP_MARKS:
+        if m.mark_type in (MarkType.CROP_MARKS, MarkType.GAP_CROP_MARKS):
             m.crop_length_mm = self._crop_len.value()
             m.crop_offset_mm = self._crop_off.value()
+        elif m.mark_type == MarkType.CUSTOM_MARK:
+            m.mark_pdf_path = self._mark_path.text()
+            m.mark_width_mm = self._mark_w.value()
+            m.mark_x_mm = self._mark_x.value()
+            m.mark_y_mm = self._mark_y.value()
         elif m.mark_type == MarkType.TEXT_LABEL:
             m.label_text = self._label_edit.text()
             m.label_font_size = self._label_size.value()

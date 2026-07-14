@@ -21,6 +21,8 @@ from typing import List, Optional, Tuple
 import fitz
 
 from pressready.engine.data_model import (
+    BookletMode,
+    LayoutSettings,
     LayoutType,
     Project,
     SourceBox,
@@ -48,16 +50,25 @@ def margins_pt(project: Project) -> Tuple[float, float, float, float]:
     )
 
 
+# Convenience grids for the plain "N pages per sheet" choice. Anything not listed
+# here is expressed by setting rows/cols directly.
+_NUP_GRIDS = {1: (1, 1), 2: (2, 1), 4: (2, 2), 6: (3, 2), 8: (4, 2), 9: (3, 3), 16: (4, 4)}
+
+
 def grid_for(layout) -> Tuple[int, int]:
     """(cols, rows) for an N-Up layout."""
     if layout.rows and layout.cols:
+        if layout.rows < 1 or layout.cols < 1:
+            raise ValueError(
+                f"rows and cols must be at least 1, got {layout.rows}×{layout.cols}")
         return layout.cols, layout.rows
-    nup = layout.nup
-    if nup == 2:
-        return 2, 1
-    if nup == 4:
-        return 2, 2
-    raise ValueError(f"nup must be 2 or 4 (or set rows/cols explicitly), got {nup}")
+    try:
+        return _NUP_GRIDS[layout.nup]
+    except KeyError:
+        raise ValueError(
+            f"nup must be one of {sorted(_NUP_GRIDS)} (or set rows/cols explicitly), "
+            f"got {layout.nup}"
+        ) from None
 
 
 def cell_grid(project: Project, cols: int, rows: int) -> List[fitz.Rect]:
@@ -126,45 +137,73 @@ def fitted_rect(cell: fitz.Rect, width: float, height: float) -> fitz.Rect:
     return fitz.Rect(x0, y0, x0 + w, y0 + h)
 
 
-def target_rect(cell: fitz.Rect, place: fitz.Rect, clip: fitz.Rect) -> Tuple[fitz.Rect, fitz.Rect]:
+def place_page(
+    cell: fitz.Rect,
+    place: fitz.Rect,
+    clip: fitz.Rect,
+    allow_rotate: bool = False,
+) -> Tuple[fitz.Rect, fitz.Rect, int]:
     """
     Work out where to draw so that *place* lands exactly on the cell.
 
-    Returns (target, trim) where *target* is the rect to hand ``show_pdf_page``
-    (sized for the clip, so bleed spills outside the cell) and *trim* is where the
-    place box ends up on the sheet — the rect crop marks must follow.
+    Returns (target, trim, rotate):
 
-    A page whose proportions don't match the cell is letterboxed inside it, so trim
-    is often smaller than the cell. Marking the cell instead of the trim is how you
-    get crop marks that miss the page.
+    * *target* — the rect to hand ``show_pdf_page``. It is sized for the clip, so
+      bleed deliberately spills outside the cell.
+    * *trim* — where the place box ends up on the sheet. This is what crop marks
+      must follow: a page whose proportions don't match its cell is letterboxed
+      inside it, and marking the cell instead is how you get crop marks that miss
+      the paper.
+    * *rotate* — 0 or 90. With *allow_rotate*, a page is turned a quarter turn when
+      that fills its cell better, which is what lets landscape artwork sit on a
+      portrait sheet without the operator pre-rotating the file.
     """
-    trim = fitted_rect(cell, place.width, place.height)
-    if clip == place:
-        return trim, trim
+    rotate = 0
+    if allow_rotate:
+        upright = min(cell.width / place.width, cell.height / place.height)
+        turned = min(cell.width / place.height, cell.height / place.width)
+        if turned > upright:
+            rotate = 90
 
-    scale = trim.width / place.width
+    pw, ph = (place.width, place.height) if rotate == 0 else (place.height, place.width)
+    trim = fitted_rect(cell, pw, ph)
+    if clip == place:
+        return trim, trim, rotate
+
+    scale = trim.width / pw
+    # Bleed margins around the place box, in source space.
+    left, top = place.x0 - clip.x0, place.y0 - clip.y0
+    right, bottom = clip.x1 - place.x1, clip.y1 - place.y1
+    if rotate == 90:
+        # show_pdf_page's quarter turn sends the source's top edge to the left of the
+        # sheet and its right edge to the top (verified against output, not assumed),
+        # so the bleed margins travel with it.
+        left, top, right, bottom = top, right, bottom, left
+
     target = fitz.Rect(
-        trim.x0 - (place.x0 - clip.x0) * scale,
-        trim.y0 - (place.y0 - clip.y0) * scale,
-        trim.x1 + (clip.x1 - place.x1) * scale,
-        trim.y1 + (clip.y1 - place.y1) * scale,
+        trim.x0 - left * scale, trim.y0 - top * scale,
+        trim.x1 + right * scale, trim.y1 + bottom * scale,
     )
+    return target, trim, rotate
+
+
+def target_rect(cell: fitz.Rect, place: fitz.Rect, clip: fitz.Rect) -> Tuple[fitz.Rect, fitz.Rect]:
+    """(target, trim) without rotation. Thin wrapper kept for callers that never turn pages."""
+    target, trim, _ = place_page(cell, place, clip, allow_rotate=False)
     return target, trim
 
 
 # ── page ordering ────────────────────────────────────
 
-def booklet_page_order(n: int) -> List[Tuple[int, int]]:
+def _saddle_positions(m: int) -> List[Tuple[int, int]]:
     """
-    Saddle-stitch page ordering.
+    Nesting order for *m* slots (a multiple of 4), as (left, right) slot positions.
 
-    Returns (left, right) pairs, 0-based, one per printed side; -1 means blank.
-    Facing pages always sum to padded-1 — that is what makes a folded signature
-    read in order.
+    Facing slots always sum to m-1 — that is what makes a folded signature read in
+    order once it is nested and stapled through the fold.
     """
-    padded = ((n + 3) // 4) * 4
     result = []
-    lo, hi = 0, padded - 1
+    lo, hi = 0, m - 1
     while lo < hi:
         result.append((hi, lo))
         lo += 1
@@ -172,7 +211,85 @@ def booklet_page_order(n: int) -> List[Tuple[int, int]]:
         result.append((lo, hi))
         lo += 1
         hi -= 1
-    return [(l if l < n else -1, r if r < n else -1) for l, r in result]
+    return result
+
+
+def padded_slots(n: int, fillers_in_middle: bool = False) -> List[int]:
+    """
+    Page slots for a booklet of *n* pages, padded to a multiple of four with -1.
+
+    A folded sheet always carries four pages, so a booklet's length is rounded up.
+    By default the blanks land at the end (a blank back cover). fillers_in_middle
+    puts them in the centre instead, which keeps the back cover printed.
+    """
+    padded = ((n + 3) // 4) * 4
+    blanks = padded - n
+    slots = list(range(n))
+    if not blanks:
+        return slots
+    if fillers_in_middle:
+        mid = n // 2
+        return slots[:mid] + [-1] * blanks + slots[mid:]
+    return slots + [-1] * blanks
+
+
+def signature_groups(n: int, layout) -> List[List[int]]:
+    """
+    Split the padded slots into signatures — the units that get folded together.
+
+    Saddle stitch nests the whole document as one signature. Perfect binding folds
+    fixed-size signatures separately and gathers them, so each is nested on its own.
+    """
+    slots = padded_slots(n, layout.fillers_in_middle)
+    if layout.booklet_mode != BookletMode.PERFECT_BOUND:
+        return [slots]
+
+    sheets = max(1, int(layout.signature_sheets or 1))
+    per_signature = sheets * 4
+    groups = [slots[i:i + per_signature] for i in range(0, len(slots), per_signature)]
+    for group in groups:
+        while len(group) % 4:
+            group.append(-1)
+    return groups
+
+
+def booklet_page_order(
+    n: int,
+    layout=None,
+) -> List[Tuple[int, int]]:
+    """
+    Booklet page ordering: (left, right) page indices per printed side; -1 = blank.
+
+    With no *layout* this is a plain saddle stitch, which is what the simple
+    invariants (every page once, facing pages sum to a constant) are checked against.
+    """
+    if layout is None:
+        layout = LayoutSettings(layout_type=LayoutType.BOOKLET)
+
+    order: List[Tuple[int, int]] = []
+    for group in signature_groups(n, layout):
+        for a, b in _saddle_positions(len(group)):
+            left, right = group[a], group[b]
+            if layout.right_to_left:
+                left, right = right, left
+            order.append((left, right))
+    return order
+
+
+def creep_shift_pt(layout, depth: int, sheets_in_signature: int) -> float:
+    """
+    How far this sheet's pages move towards the spine, in points.
+
+    Nested sheets push out at the fore-edge, and trimming the folded stack flush
+    takes more off the inner leaves. Compensation walks linearly from the outermost
+    sheet's shift to the innermost one's.
+    """
+    if not layout.creep_enabled:
+        return 0.0
+    if sheets_in_signature <= 1:
+        return mm_to_pt(layout.creep_inner_mm)
+    t = depth / (sheets_in_signature - 1)
+    return mm_to_pt(layout.creep_outer_mm + (layout.creep_inner_mm - layout.creep_outer_mm) * t)
 
 
 # ── the plan ─────────────────────────────────────────
@@ -230,27 +347,51 @@ def _plan_nup(project: Project, page_indices: List[int]) -> List[Sheet]:
     return sheets
 
 
-def _plan_booklet(project: Project, page_indices: List[int]) -> List[Sheet]:
-    cells = cell_grid(project, 2, 1)
-    order = booklet_page_order(len(page_indices))
-    num_sheets = max(1, len(order) // 2)
+def _shifted(cell: fitz.Rect, dx: float) -> fitz.Rect:
+    return fitz.Rect(cell.x0 + dx, cell.y0, cell.x1 + dx, cell.y1)
 
-    _, _, _, _ = margins_pt(project)
-    gh = mm_to_pt(project.layout.gutter_h_mm)
+
+def _plan_booklet(project: Project, page_indices: List[int]) -> List[Sheet]:
+    layout = project.layout
+    cells = cell_grid(project, 2, 1)
+    gh = mm_to_pt(layout.gutter_h_mm)
     fold_x = cells[0].x1 + gh / 2 if gh else cells[0].x1
 
-    sheets = []
-    for si, (lp, rp) in enumerate(order):
-        placements = []
-        if lp >= 0:
-            placements.append(Placement(cells[0], page_indices[lp]))
-        if rp >= 0:
-            placements.append(Placement(cells[1], page_indices[rp]))
-        sheets.append(Sheet(
-            placements=placements,
-            number=si // 2 + 1,
-            total=num_sheets,
-            side="Front" if si % 2 == 0 else "Back",
-            fold_x=fold_x,
-        ))
+    groups = signature_groups(len(page_indices), layout)
+    total_sheets = sum(len(_saddle_positions(len(g))) // 2 for g in groups)
+
+    sheets: List[Sheet] = []
+    sheet_no = 0
+    for group in groups:
+        positions = _saddle_positions(len(group))
+        sheets_in_signature = len(positions) // 2
+
+        for si, (a, b) in enumerate(positions):
+            depth = si // 2  # 0 = outermost sheet of this signature
+            if si % 2 == 0:
+                sheet_no += 1
+
+            # Creep moves each page towards the spine, which is the fold between the
+            # two cells: the left page moves right, the right page moves left.
+            shift = creep_shift_pt(layout, depth, sheets_in_signature)
+            left_cell = _shifted(cells[0], shift)
+            right_cell = _shifted(cells[1], -shift)
+
+            left, right = group[a], group[b]
+            if layout.right_to_left:
+                left, right = right, left
+
+            placements = []
+            if left >= 0:
+                placements.append(Placement(left_cell, page_indices[left]))
+            if right >= 0:
+                placements.append(Placement(right_cell, page_indices[right]))
+
+            sheets.append(Sheet(
+                placements=placements,
+                number=sheet_no,
+                total=total_sheets,
+                side="Front" if si % 2 == 0 else "Back",
+                fold_x=fold_x,
+            ))
     return sheets

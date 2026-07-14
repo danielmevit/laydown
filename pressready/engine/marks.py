@@ -63,6 +63,10 @@ def draw_marks(
         if m.mark_type == MarkType.CROP_MARKS:
             for r in cell_rects:
                 _draw_crop_marks(page, r, m.crop_length_mm, m.crop_offset_mm, m.crop_width_pt)
+        elif m.mark_type == MarkType.GAP_CROP_MARKS:
+            _draw_gap_crop_marks(page, cell_rects, sheet_w, sheet_h,
+                                 margin_l, margin_r, margin_t, margin_b,
+                                 m.crop_offset_mm, m.crop_width_pt)
         elif m.mark_type == MarkType.TRIM_LINE:
             for r in cell_rects:
                 _draw_trim_line(page, r)
@@ -71,12 +75,19 @@ def draw_marks(
         elif m.mark_type == MarkType.FOLDING_MARKS:
             if fold_x is not None:
                 _draw_folding_marks(page, fold_x, sheet_h, margin_t, margin_b, m.fold_line_length_mm)
+        elif m.mark_type == MarkType.PERFORATION_MARKS:
+            if fold_x is not None:
+                _draw_perforation_marks(page, fold_x, sheet_h, margin_t, margin_b)
+        elif m.mark_type == MarkType.COLOR_BAR:
+            _draw_color_bar(page, sheet_w, sheet_h, margin_t, m.patch_size_mm)
         elif m.mark_type == MarkType.TEXT_LABEL:
             _draw_text_label(page, sheet_w, sheet_h, margin_b,
                              sheet_num, total_sheets, filename, layout_info,
                              m.label_font_size or _LABEL_FONT)
         elif m.mark_type == MarkType.COLLATING_MARKS:
             _draw_collating_mark(page, sheet_w, sheet_h, margin_r, sheet_num, total_sheets)
+        elif m.mark_type == MarkType.CUSTOM_MARK:
+            _draw_custom_mark(page, m)
 
 
 # ── crop marks ──────────────────────────────────────
@@ -104,6 +115,40 @@ def _draw_crop_marks(
     ]
     for a, b in lines:
         page.draw_line(a, b, color=(0, 0, 0), width=width)
+
+
+# ── gap crop marks ──────────────────────────────────
+
+
+def _draw_gap_crop_marks(
+    page: fitz.Page,
+    cell_rects: List[fitz.Rect],
+    sheet_w: float, sheet_h: float,
+    margin_l: float, margin_r: float, margin_t: float, margin_b: float,
+    offset_mm: float = _CROP_OFF_MM,
+    width: float = _CROP_W,
+) -> None:
+    """
+    Cut marks that run from the sheet edge to each page edge.
+
+    Where ordinary crop marks sit at the page's corners, these span the whole margin
+    and gutter, so a guillotine operator can line the blade up on a single cut that
+    crosses the sheet — the usual choice for a ganged sheet of cards or labels.
+    """
+    if not cell_rects:
+        return
+    gap = mm_to_pt(offset_mm)
+    xs = sorted({r.x0 for r in cell_rects} | {r.x1 for r in cell_rects})
+    ys = sorted({r.y0 for r in cell_rects} | {r.y1 for r in cell_rects})
+
+    for x in xs:
+        page.draw_line((x, 0), (x, max(0.0, margin_t - gap)), color=(0, 0, 0), width=width)
+        page.draw_line((x, min(sheet_h, sheet_h - margin_b + gap)), (x, sheet_h),
+                       color=(0, 0, 0), width=width)
+    for y in ys:
+        page.draw_line((0, y), (max(0.0, margin_l - gap), y), color=(0, 0, 0), width=width)
+        page.draw_line((min(sheet_w, sheet_w - margin_r + gap), y), (sheet_w, y),
+                       color=(0, 0, 0), width=width)
 
 
 # ── trim line ───────────────────────────────────────
@@ -164,6 +209,82 @@ def _draw_folding_marks(
         (fold_x, bottom_y + ml / 2),
         color=(0, 0, 0), width=0.4, dashes="[2 2]",
     )
+
+
+# ── perforation marks ───────────────────────────────
+
+
+def _draw_perforation_marks(
+    page: fitz.Page,
+    x: float,
+    sheet_h: float,
+    margin_t: float,
+    margin_b: float,
+) -> None:
+    """A dotted rule up the fold, marking where the sheet gets perforated."""
+    page.draw_line((x, max(0.0, margin_t / 2)), (x, sheet_h - margin_b / 2),
+                   color=(0, 0, 0), width=0.4, dashes="[1 3]")
+
+
+# ── colour bar ──────────────────────────────────────
+
+# Process inks plus a neutral ramp — enough to read density and grey balance off
+# the printed sheet. Imposition Wizard ships this as a placeholder PDF; drawing it
+# keeps PressReady free of bundled assets, and a shop with a house bar can still
+# place it with a Custom Mark.
+_COLOR_BAR = [
+    (0, 0, 0), (0, 1, 1), (1, 0, 1), (1, 1, 0),
+    (0.25, 0.25, 0.25), (0.5, 0.5, 0.5), (0.75, 0.75, 0.75), (1, 1, 1),
+]
+
+
+def _draw_color_bar(
+    page: fitz.Page,
+    sheet_w: float, sheet_h: float,
+    margin_t: float,
+    patch_mm: float = 5.0,
+) -> None:
+    size = mm_to_pt(patch_mm)
+    if margin_t < size + mm_to_pt(2):
+        return
+    total = size * len(_COLOR_BAR)
+    x = (sheet_w - total) / 2
+    y = max(1.0, (margin_t - size) / 2)
+    for red, green, blue in _COLOR_BAR:
+        page.draw_rect(fitz.Rect(x, y, x + size, y + size),
+                       color=(0.5, 0.5, 0.5), width=0.2, fill=(red, green, blue))
+        x += size
+
+
+# ── custom mark ─────────────────────────────────────
+
+
+def _draw_custom_mark(page: fitz.Page, mark) -> None:
+    """
+    Stamp a user-supplied PDF onto the sheet, vector intact.
+
+    Studying Imposition Wizard's install folder gave this away: its Placeholders/
+    directory holds `missing-bull-eye.pdf`, `missing-color-bar.pdf` and friends — the
+    fallbacks shown when a mark's artwork is absent. So a "custom mark" is not drawing
+    code at all, it is artwork placed by rule, and show_pdf_page already does exactly
+    that. A shop can drop in its own bull's-eye, star target or house colour bar.
+    """
+    if not mark.mark_pdf_path or not os.path.isfile(mark.mark_pdf_path):
+        return
+    try:
+        with fitz.open(mark.mark_pdf_path) as art:
+            if not len(art):
+                return
+            source = art[0].rect
+            width = mm_to_pt(mark.mark_width_mm)
+            height = width * (source.height / source.width) if source.width else width
+            x, y = mm_to_pt(mark.mark_x_mm), mm_to_pt(mark.mark_y_mm)
+            page.show_pdf_page(fitz.Rect(x, y, x + width, y + height), art, 0,
+                               keep_proportion=True, overlay=True)
+    except Exception:
+        # A bad mark PDF must never take the whole job down; the sheet is still
+        # correct without it, and preflight is where this gets reported.
+        return
 
 
 # ── text labels ─────────────────────────────────────

@@ -1,6 +1,7 @@
 """Unit conversions and page range parsing."""
 
 import re
+from enum import Enum
 from typing import List
 
 PT_PER_MM = 72.0 / 25.4  # ~2.8346
@@ -19,6 +20,45 @@ def pt_to_mm(pt: float) -> float:
 def inch_to_pt(inch: float) -> float:
     """Convert inches to PDF points."""
     return inch * 72.0
+
+
+class Unit(Enum):
+    """
+    A display unit. The model always stores millimetres; this only changes what the
+    operator types and reads, so a shop that thinks in inches never has to convert.
+    """
+    MM = "mm"
+    CM = "cm"
+    INCH = "in"
+    POINT = "pt"
+
+    @property
+    def per_mm(self) -> float:
+        return {
+            Unit.MM: 1.0,
+            Unit.CM: 0.1,
+            Unit.INCH: 1.0 / 25.4,
+            Unit.POINT: PT_PER_MM,
+        }[self]
+
+    @property
+    def decimals(self) -> int:
+        """Enough precision to express a useful step without noise."""
+        return {Unit.MM: 1, Unit.CM: 2, Unit.INCH: 3, Unit.POINT: 1}[self]
+
+    @property
+    def step(self) -> float:
+        return {Unit.MM: 0.5, Unit.CM: 0.1, Unit.INCH: 0.05, Unit.POINT: 1.0}[self]
+
+    def from_mm(self, mm: float) -> float:
+        return mm * self.per_mm
+
+    def to_mm(self, value: float) -> float:
+        return value / self.per_mm
+
+    @property
+    def suffix(self) -> str:
+        return f" {self.value}"
 
 
 def parse_page_range(expr: str, total_pages: int) -> List[int]:

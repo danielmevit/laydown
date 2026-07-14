@@ -105,7 +105,11 @@ class _RenderWorker(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.project: Optional[Project] = None
-        self.dpi: int = 72
+        # Rendering DPI. Sheets used to be rasterised at 72 and then scaled up by the
+        # zoom factor, so "actual size" on a 96-DPI screen was a 1.33x blow-up of a
+        # 72-DPI image and looked soft. The canvas now asks for a DPI that matches how
+        # large the sheet will actually be drawn.
+        self.dpi: int = 96
         self.show_tops = False
         self.show_numbers = True
         self.show_frames = True
@@ -167,7 +171,8 @@ class SheetCanvas(QScrollArea):
         self._pixmaps: List[QPixmap] = []
         self._columns = 2
         self._zoom = 0.0  # 0 = auto-fit on first render
-        self._base_dpi = 72
+        self._base_dpi = 72        # the PDF's own unit scale — pixmaps are rendered above this
+        self._render_dpi = 96
         self._sheet_widgets: list = []
 
         self._show_tops = False
@@ -238,45 +243,51 @@ class SheetCanvas(QScrollArea):
         self._pixmaps.clear()
         self._show_placeholder()
 
-    def zoom_in(self):
-        if self._zoom <= 0:
-            self._zoom = 1.0
-        self._zoom = min(4.0, self._zoom * 1.25)
+    def _sheet_size_pt(self):
+        """The sheet in points, recovered from a pixmap rendered at _render_dpi."""
+        if not self._pixmaps:
+            return 0.0, 0.0
+        factor = self._base_dpi / self._render_dpi
+        return self._pixmaps[0].width() * factor, self._pixmaps[0].height() * factor
+
+    def _apply_zoom(self, zoom: float):
+        self._zoom = zoom
         self._rebuild_display()
+        # Re-rasterise if the sheets are now drawn much larger or smaller than the
+        # pixels we have, so zooming in sharpens instead of magnifying blur.
+        if self._project and abs(self._target_dpi() - self._render_dpi) > 24:
+            self._debounce.start()
+
+    def zoom_in(self):
+        self._apply_zoom(min(4.0, (self._zoom if self._zoom > 0 else 1.0) * 1.25))
 
     def zoom_out(self):
-        if self._zoom <= 0:
-            self._zoom = 1.0
-        self._zoom = max(0.15, self._zoom / 1.25)
-        self._rebuild_display()
+        self._apply_zoom(max(0.15, (self._zoom if self._zoom > 0 else 1.0) / 1.25))
 
     def fit_width(self):
         if not self._pixmaps:
             return
         avail = self.viewport().width() - self._grid.spacing() * (self._columns + 1) - 40
         per_col = avail / self._columns
-        bw = self._pixmaps[0].width()
-        self._zoom = per_col / bw if bw > 0 else 1.0
-        self._rebuild_display()
+        sheet_w, _ = self._sheet_size_pt()
+        self._apply_zoom(per_col / sheet_w if sheet_w > 0 else 1.0)
 
     def fit_page(self):
         if not self._pixmaps:
             return
         vp = self.viewport()
-        aw = (vp.width() - 60) / self._columns
-        ah = vp.height() - 70
-        bw = self._pixmaps[0].width()
-        bh = self._pixmaps[0].height()
-        self._zoom = min(aw / bw if bw else 1, ah / bh if bh else 1)
-        self._rebuild_display()
+        avail_w = (vp.width() - 60) / self._columns
+        avail_h = vp.height() - 70
+        sheet_w, sheet_h = self._sheet_size_pt()
+        self._apply_zoom(min(avail_w / sheet_w if sheet_w else 1,
+                             avail_h / sheet_h if sheet_h else 1))
 
     def actual_size(self):
         try:
-            sdpi = QApplication.primaryScreen().logicalDotsPerInch()
+            screen_dpi = QApplication.primaryScreen().logicalDotsPerInch()
         except Exception:
-            sdpi = 96
-        self._zoom = sdpi / self._base_dpi
-        self._rebuild_display()
+            screen_dpi = 96
+        self._apply_zoom(screen_dpi / self._base_dpi)
 
     def get_zoom_percent(self) -> int:
         z = self._zoom if self._zoom > 0 else 1.0
@@ -284,13 +295,30 @@ class SheetCanvas(QScrollArea):
 
     # ── rendering ────────────────────────────────
 
+    def _target_dpi(self) -> int:
+        """
+        The DPI worth rasterising at for the current zoom.
+
+        Rendering at 72 and letting Qt scale up is what made the preview soft; asking
+        MuPDF for the pixels instead keeps text and rules crisp. Capped so that zooming
+        a large job in doesn't turn every sheet into a huge bitmap.
+        """
+        try:
+            screen = QApplication.primaryScreen()
+            ratio = screen.devicePixelRatio() if screen else 1.0
+        except Exception:
+            ratio = 1.0
+        zoom = self._zoom if self._zoom > 0 else 1.0
+        return int(max(96, min(300, self._base_dpi * zoom * ratio)))
+
     def _do_render(self):
         if not self._project or not self._project.source_pdf_path:
             return
         self._worker.cancel()
         self._worker.wait()
+        self._render_dpi = self._target_dpi()
         self._worker.project = self._project
-        self._worker.dpi = self._base_dpi
+        self._worker.dpi = self._render_dpi
         self._worker.show_tops = self._show_tops
         self._worker.show_numbers = self._show_numbers
         self._worker.show_frames = self._show_frames
@@ -334,7 +362,9 @@ class SheetCanvas(QScrollArea):
             vbox.setSpacing(4)
 
             lbl = QLabel()
-            target_w = max(60, int(pm.width() * zoom))
+            # zoom is against the sheet's own points, so convert out of render DPI.
+            display_scale = zoom * self._base_dpi / self._render_dpi
+            target_w = max(60, int(pm.width() * display_scale))
             scaled = pm.scaledToWidth(target_w, Qt.TransformationMode.SmoothTransformation)
             lbl.setPixmap(scaled)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)

@@ -6,6 +6,88 @@ All notable changes to PressReady are documented here.
 
 ## [Unreleased]
 
+### Phase 6 — Marks, units, preflight (2026-07-15)
+
+- **Units** — mm / cm / in / pt (View → Units). The model stays millimetres throughout; the
+  unit is display-only, so a shop doing Letter work can type inches and nothing downstream
+  has to care.
+- **New marks** — gap crop marks (cuts that run to the sheet edge, for ganged work),
+  perforation marks, a process + grey-ramp colour bar, and **custom marks: any PDF, stamped
+  on the sheet**. That last one came straight out of the reference study — Imposition
+  Wizard's `Placeholders/` folder holds `missing-bull-eye.pdf` and friends, which gives away
+  that a custom mark is just artwork placed by rule. `show_pdf_page` already did that, so a
+  shop can drop in its own bull's-eye or house colour bar. A missing or corrupt mark PDF
+  never takes the job down.
+- **Preflight** — problems surface while there's still time to fix them, instead of arriving
+  as an exception after Generate (or at the guillotine): impossible margins, no trim box,
+  bleed with no artwork behind it, mixed page sizes, page counts that don't fold, pages
+  being scaled. Graded deliberately: A4 two-up on A3 lands near 97% and that is the job this
+  tool is *for*, so slight scaling is a note and only a real reduction raises the strip.
+  Notes stay in Help → Preflight (F7) rather than sitting on screen training people to
+  ignore it.
+
+### Phase 4 — The Toolcraft-style UI (2026-07-15)
+
+- **`ui/theme.py`** — every colour, radius and size in one place, plus the whole stylesheet.
+  Neutrals are authored in **OKLCH** and converted to hex at import (Qt has no `oklch()` or
+  `color-mix()`). The converter is exact: `oklch(0.269)` → `#262626`, matching Toolcraft's
+  own literal for the same token.
+- **`ui/components.py`** — the control kit: a real switch instead of a checkbox, a
+  full-width segmented control, 36px collapsible section headers with a per-section reset,
+  label-above field rows, hairline 4px scrollbars.
+- **Generate PDF moved to a sticky footer** — Toolcraft pins final delivery actions rather
+  than burying them in a toolbar.
+- **The accent stays orange.** It's the product's identity and is already in the app icon and
+  MSIX tiles; what's borrowed from Toolcraft is the structure, density and control anatomy.
+- **Preview is no longer soft.** Sheets were rasterised at 72 DPI and then scaled up by the
+  zoom factor, so "Actual size" on a 96-DPI screen was a 1.33× blow-up of a 72-DPI image.
+  It now rasterises at a DPI matched to how large the sheet is actually drawn (96–300),
+  and re-renders when zoom moves far enough to matter.
+
+### Phase 3 — One truth for the settings panel (2026-07-15)
+
+**The structural fix for v2.0.0's central defect.** The Layout tab collected booklet modes,
+right-to-left, signatures and creep; the engine ignored all of them; nothing could see the
+gap because "the model has a field" and "the engine reads it" were unrelated facts.
+
+- **`engine/capabilities.py`** — every setting is now classified HONOURED or NOT_IMPLEMENTED,
+  and three tests enforce it: no control may target an unhonoured setting, every named path
+  must exist, and **no field may escape classification**. Adding a setting to the model now
+  fails the build until someone decides, in public, whether the engine honours it. Verified
+  by adding a dummy field and watching it fail.
+- **`ui/schema.py`** — the panel is declared, not wired: sections and controls with a
+  `target`, default, description and `visible_when`. Section titles must name what they edit,
+  sections stay 2–7 controls, switches may not be labelled "Enable X", segmented controls
+  stay ≤4 short options — all enforced by tests rather than review.
+- **Hide, never disable** — a control that can't act is removed, not greyed out. A greyed
+  control still claims the feature exists.
+- **`ui/panel.py`** — one `ValueStore` behind every control, which is what makes the rest
+  nearly free: **undo/redo** (Ctrl+Z/Y — the Edit menu's stubs are now real),
+  **per-section reset**, and **presets** (File → Save/Load Preset, readable JSON).
+- **In-app help is generated from the schema** (`ui/help.py`), so it can no longer document a
+  feature that doesn't exist — which is exactly what the v2.0.0 tutorial did.
+- Deleted `layout_tab.py` and `sheet_tab.py` and their four hand-wired `get_settings()`
+  methods. The two genuinely growable lists (preprocessors, marks) keep bespoke editors.
+
+### Phase 5 — The layout depth the UI already promised (2026-07-15)
+
+- **Arbitrary N-Up grids** — 1/2/4/6/8/9/16-up, or explicit rows × columns. Was hardcoded to
+  2×1 and 2×2.
+- **Auto-rotate** — turn a page a quarter turn when it fills its cell better, so landscape
+  artwork sits on a portrait sheet without pre-rotating the file.
+- **Right-to-left binding**, and **blanks in the middle** (pad at the centre spread instead of
+  the end, keeping a printed back cover).
+- **Signatures and perfect binding** — saddle stitch nests the whole document as one
+  signature; perfect binding folds fixed-size signatures separately and gathers them, which
+  changes the page order. Each signature still folds into reading order (tested).
+- **Creep** — fore-edge compensation, walked linearly from the outermost sheet's shift to the
+  innermost. Stated as explicit endpoints the operator measures rather than derived from a
+  guessed paper caliper; negatives shift the other way.
+- **Not implemented: work-and-turn and work-and-tumble.** These are press-form techniques
+  that put both forms on one double-size plate, not orderings — getting them subtly wrong
+  wastes plates and paper. They are removed from the model rather than left as controls that
+  do nothing, and are in ROADMAP.md's backlog pending a pressman's review.
+
 ### Phase 2 — Box-aware imposition (2026-07-14)
 
 **The headline fix.** v2.0.0 called `show_pdf_page` without a clip, so every page was imposed on

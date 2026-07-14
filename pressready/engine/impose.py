@@ -17,11 +17,11 @@ from pressready.engine.data_model import Project
 from pressready.engine.geometry import (
     Sheet,
     booklet_page_order,  # re-exported: callers import it from here
+    margins_pt,
+    place_page,
     sheet_plan,
     sheet_size_pt,
-    margins_pt,
     source_boxes,
-    target_rect,
 )
 from pressready.engine.marks import draw_marks
 from pressready.engine.preprocessors import apply_preprocessors
@@ -159,11 +159,12 @@ def _render(
             for placement in sheet.placements:
                 src_page = src_doc[placement.page_index]
                 place, clip = source_boxes(src_page, project.source)
-                target, trim = target_rect(placement.cell, place, clip)
+                target, trim, rotate = place_page(
+                    placement.cell, place, clip, allow_rotate=project.layout.auto_rotate)
 
                 page.show_pdf_page(
                     target, src_doc, placement.page_index,
-                    clip=clip, keep_proportion=True, overlay=True,
+                    clip=clip, rotate=rotate, keep_proportion=True, overlay=True,
                 )
                 # Marks follow the trim rect, not the cell: a page whose proportions
                 # differ from the cell is letterboxed inside it, and crop marks drawn
