@@ -1,7 +1,7 @@
 """
 What the engine actually honours.
 
-PressReady v2.0.0 shipped a Layout tab that collected booklet modes, right-to-left,
+PressReady 0.2.0 shipped a Layout tab that collected booklet modes, right-to-left,
 signatures and page creep, and an engine that silently ignored all of them. The
 settings existed, the UI wrote them, nothing read them, and the operator only found
 out at the press. That failure was possible because "the model has a field" and

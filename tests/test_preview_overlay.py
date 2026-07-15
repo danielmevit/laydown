@@ -1,7 +1,7 @@
 """
 The preview overlay must describe the sheet it is drawn on.
 
-v2.0.0 computed overlay cells from the project while rendering an imposed PDF —
+0.2.0 computed overlay cells from the project while rendering an imposed PDF —
 two derivations of the same geometry that could disagree, which for a WYSIWYG
 prepress preview means showing the user a cut line that isn't the cut line.
 The overlay now comes from the imposition result itself; these tests hold that.

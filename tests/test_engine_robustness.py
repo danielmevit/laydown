@@ -2,7 +2,7 @@
 Failure behaviour and resource hygiene.
 
 A prepress tool must not fail quietly: a setting the user typed either takes
-effect or says why it didn't. These tests pin the places where v2.0.0 swallowed
+effect or says why it didn't. These tests pin the places where 0.2.0 swallowed
 the difference (ROADMAP.md Phase 1).
 """
 

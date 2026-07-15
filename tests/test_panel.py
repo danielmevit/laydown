@@ -205,7 +205,7 @@ class TestRenderedPanel:
         assert booklet.isVisibleTo(page), "booklet settings never appeared"
 
     def test_hidden_controls_are_hidden_not_disabled(self, app, store):
-        # The rule that answers v2.0.0's defect: a control that cannot act is gone,
+        # The rule that answers 0.2.0's defect: a control that cannot act is gone,
         # not greyed out. A greyed control still says "this feature exists".
         layout_tab = next(t for t in SCHEMA if t.name == "Layout")
         page = SchemaTab(layout_tab, store)

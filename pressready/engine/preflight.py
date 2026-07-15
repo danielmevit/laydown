@@ -1,7 +1,7 @@
 """
 Preflight — say what's wrong before the press does.
 
-v2.0.0 discovered problems at export: "Margins/gutters too large for sheet size"
+0.2.0 discovered problems at export: "Margins/gutters too large for sheet size"
 arrived as an exception after the operator hit Generate, and subtler issues (a source
 with no trim box, bleed with nowhere to go, a page count that doesn't fold) arrived
 at the guillotine. Imposition Wizard has had a preflight dashboard for years; this is

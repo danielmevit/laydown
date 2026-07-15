@@ -449,7 +449,7 @@ class MainWindow(QMainWindow):
         """
         A strip that says what's wrong while there's still time to fix it.
 
-        v2.0.0 only reported trouble by raising at export — "margins too large" arrived
+        0.2.0 only reported trouble by raising at export — "margins too large" arrived
         after the operator hit Generate, and subtler problems arrived at the guillotine.
         """
         self._preflight_bar = QFrame()

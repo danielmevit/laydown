@@ -27,7 +27,7 @@
 ## Known code traps
 - **Adding a field to the data model fails the build until you classify it** in
   `engine/capabilities.py` as HONOURED or NOT_IMPLEMENTED. That is deliberate: it is the
-  guard against v2.0.0's defect, where the UI collected settings the engine ignored.
+  guard against 0.2.0's defect, where the UI collected settings the engine ignored.
   If a setting isn't implemented yet, put it in NOT_IMPLEMENTED — the UI is then
   forbidden from offering it, and `tests/test_capabilities.py` enforces both directions.
 - **`ui/schema.py` is the only place settings UI is declared.** Don't hand-build a
@@ -55,8 +55,10 @@
 - MSIX build needs a Windows 10 SDK; `certs/` (signing keys) is gitignored — the first run of
   `packaging\windows\build.ps1` self-signs. Trust the cert once via elevated PowerShell.
 - MSIX needs a **four-part** version and refuses to install over a newer one. `__version__`
-  is three parts and the script appends `.0`. Going 2.0.0 → 0.3.0 means existing MSIX
-  installs must be removed by hand first.
+  is three parts and the script appends `.0`. The 0.2.0 release was published in February as
+  **v2.0.0** and only the tag was renumbered — its MSIX still declares `2.0.0.0` inside, which
+  no rename can change. So an existing install of it blocks 0.3.0 and must be removed first:
+  `Get-AppxPackage PressReadyTeam.PressReady | Remove-AppxPackage`.
 - PyInstaller frozen mode resolves icons via `sys._MEIPASS` (`app_icon()` in
   `ui/main_window.py`) — test icon changes in a frozen build, not just from source.
 - The site lives in `site/` (Astro) and deploys **from `main`**, not `dev`.

@@ -2,7 +2,7 @@
 Box-aware imposition (ROADMAP.md Phase 2).
 
 A press-ready PDF describes its finished page with a TrimBox and paints artwork out
-past it to a BleedBox. v2.0.0 imposed the MediaBox unconditionally, so for exactly
+past it to a BleedBox. 0.2.0 imposed the MediaBox unconditionally, so for exactly
 the files this tool exists to handle it placed the wrong area and marked the wrong
 edge. These tests pin the box semantics.
 """

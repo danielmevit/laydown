@@ -13,7 +13,7 @@
   cell geometry is computed separately — see GOTCHAS.)
 - **MSIX + portable ZIP, no third-party installer** — packaging uses only the free Windows
   10 SDK (`makeappx`, `signtool`) via `build_msix.ps1`. Inno Setup was removed.
-- **AGPL-3.0-only** license (relicensed after 2.0.0; see LICENSING.md).
+- **AGPL-3.0-only** license (relicensed after 0.2.0; see LICENSING.md).
 - **mm in the model, points in the engine** — all user-facing/model dimensions are mm;
   conversion to PDF points happens at the engine boundary (`utils.mm_to_pt`).
 
@@ -21,7 +21,7 @@
 
 - **Keep PyQt6 + PyMuPDF; port Toolcraft's design language, don't adopt its stack.** Toolcraft is
   React/Vite/Tailwind. PressReady's value is the PyMuPDF vector engine and MSIX desktop packaging;
-  a web rewrite would discard a shipped v2.0.0 to gain styling. What transfers is the *schema-driven
+  a web rewrite would discard a shipped 0.2.0 to gain styling. What transfers is the *schema-driven
   panel* idea and the visual system, recreated in Qt (`ROADMAP.md` Phases 3–4).
 - **A control that the engine doesn't honour must not exist in the UI** — Toolcraft's
   `visibleWhen`-never-`disabled` law. Enforced by an engine capability registry plus a test, not by
@@ -35,4 +35,4 @@
   icon and MSIX tiles. "Similar to Toolcraft" means its neutrals, density and control anatomy, not
   its identity.
 - **Evaluation before features** — the bench harness lands before any change to imposition output
-  (recipe §5). `tests/` was empty through v2.0.0; every layout improvement after this is measured.
+  (recipe §5). `tests/` was empty through 0.2.0; every layout improvement after this is measured.

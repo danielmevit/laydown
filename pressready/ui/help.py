@@ -1,7 +1,7 @@
 """
 In-app help, generated from the schema.
 
-The v2.0.0 tutorial documented Signatures and Page Creep as working features while
+The 0.2.0 tutorial documented Signatures and Page Creep as working features while
 the engine ignored both — a hand-written page describing a hand-written UI, with
 nothing keeping the two honest. The control reference is now derived from
 ``ui/schema.SCHEMA``, so it cannot describe a control that doesn't exist, and the

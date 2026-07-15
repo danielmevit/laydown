@@ -7,8 +7,13 @@ All notable changes to PressReady are documented here.
 ## [0.3.0] — 2026-07-15
 
 Version restarted at **0.3.0** to match how the rest of these projects are numbered. The
-previous tag was v2.0.0; MSIX refuses to install an older version over a newer one, so anyone
-who has the v2.0.0 MSIX installed must remove it before installing 0.3.0.
+February release was renumbered from v2.0.0 to **v0.2.0** to suit — same commit, same binaries,
+new label.
+
+Those binaries still declare `2.0.0.0` inside the MSIX, which renaming a tag can't change, and
+MSIX refuses to install an older version over a newer one. So if you have February's build
+installed, remove it before putting 0.3.0 on:
+`Get-AppxPackage PressReadyTeam.PressReady | Remove-AppxPackage`.
 
 ### Packaging — Windows, macOS, Linux
 
@@ -93,7 +98,7 @@ who has the v2.0.0 MSIX installed must remove it before installing 0.3.0.
 
 ### Phase 3 — One truth for the settings panel (2026-07-15)
 
-**The structural fix for v2.0.0's central defect.** The Layout tab collected booklet modes,
+**The structural fix for 0.2.0's central defect.** The Layout tab collected booklet modes,
 right-to-left, signatures and creep; the engine ignored all of them; nothing could see the
 gap because "the model has a field" and "the engine reads it" were unrelated facts.
 
@@ -112,7 +117,7 @@ gap because "the model has a field" and "the engine reads it" were unrelated fac
   nearly free: **undo/redo** (Ctrl+Z/Y — the Edit menu's stubs are now real),
   **per-section reset**, and **presets** (File → Save/Load Preset, readable JSON).
 - **In-app help is generated from the schema** (`ui/help.py`), so it can no longer document a
-  feature that doesn't exist — which is exactly what the v2.0.0 tutorial did.
+  feature that doesn't exist — which is exactly what the 0.2.0 tutorial did.
 - Deleted `layout_tab.py` and `sheet_tab.py` and their four hand-wired `get_settings()`
   methods. The two genuinely growable lists (preprocessors, marks) keep bespoke editors.
 
@@ -137,7 +142,7 @@ gap because "the model has a field" and "the engine reads it" were unrelated fac
 
 ### Phase 2 — Box-aware imposition (2026-07-14)
 
-**The headline fix.** v2.0.0 called `show_pdf_page` without a clip, so every page was imposed on
+**The headline fix.** 0.2.0 called `show_pdf_page` without a clip, so every page was imposed on
 its **MediaBox**. Press-ready PDFs — the files this tool exists for — describe the finished page
 with a **TrimBox** and paint artwork past it to a **BleedBox**. For those, PressReady placed the
 wrong area, and printed crop marks around the wrong edge, without saying a word.
@@ -222,7 +227,12 @@ saddle-stitch ordering, page-range parsing, margin containment, determinism, and
 
 ---
 
-## [2.0.0] — 2026-02-19
+## [0.2.0] — 2026-02-19
+
+_Published at the time as **v2.0.0**, renumbered to 0.2.0 on 2026-07-15 when the project moved
+to 0.x versioning. The code and the released binaries are unchanged — only the label. Their
+filenames still read `2.0.0`, and the MSIX still declares `2.0.0.0` internally, because they
+are the original files._
 
 ### Installers
 

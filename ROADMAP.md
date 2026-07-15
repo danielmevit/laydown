@@ -5,7 +5,7 @@ read of the code on 2026-07-14. Phases are ordered so each one is verifiable bef
 starts (`_refs/ai-full-build-recipe.md` §4). Sizes: **S** ≈ a session, **M** ≈ a few, **L** ≈ a phase of its own.
 
 ## Done
-- **v2.0.0** (2026-02-19) — four-tab UI, N-Up 2/4, saddle-stitch booklet, 6 mark types,
+- **0.2.0** (2026-02-19) — four-tab UI, N-Up 2/4, saddle-stitch booklet, 6 mark types,
   vector imposition, multi-sheet preview, MSIX + portable ZIP.
 - **2026-07-14** — AGPL relicense; AI-project standard adopted (AGENTS.md, docs/ai/,
   CodeGraph, `dev` branch); `framer-demo/node_modules` untracked.

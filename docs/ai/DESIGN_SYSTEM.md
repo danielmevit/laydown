@@ -30,7 +30,7 @@ Metrics: radius 2/4/6/8/12 · text 11/12/13/14/16 · spacing 4/6/8/12/16/24 ·
 - **Printed marks are black/grey only** (`engine/marks.py`) — those go to press. The colour
   bar is the sole exception, and it is *meant* to be ink.
 - **Hide, never disable.** A control that can't act is removed via `visible_when`, not greyed
-  out. See DECISIONS — this is the rule that answers v2.0.0's central defect.
+  out. See DECISIONS — this is the rule that answers 0.2.0's central defect.
 - **Sections name what they edit** (`Booklet`, `Bleed`, `Margins`) — never `Settings`,
   `Options`, `General`. Enforced by `tests/test_capabilities.py`.
 - Switch labels never start with "Enable" — the switch already says on/off. Also enforced.

@@ -12,7 +12,7 @@ Imposition Wizard 3 and Toolcraft — `docs/ai/REFERENCE_STUDY.md`.
 
 Two things to know before changing anything:
 - **The UI cannot offer a setting the engine ignores.** `engine/capabilities.py` classifies
-  every setting and the tests fail if one escapes. That is the guard against v2.0.0's central
+  every setting and the tests fail if one escapes. That is the guard against 0.2.0's central
   defect; don't route around it.
 - **Settings UI is declared, not written.** Add a schema entry in `ui/schema.py`; don't
   hand-build controls.

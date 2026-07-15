@@ -10,7 +10,7 @@ Two rules carry most of the weight, both learned from the Toolcraft study
 
 * **Every target must be honoured by the engine.** Enforced by a test against
   ``engine/capabilities.HONOURED``. A control that does nothing fails the build,
-  which is the defect v2.0.0 shipped.
+  which is the defect 0.2.0 shipped.
 * **Hide, never disable.** A setting that doesn't apply to the current mode is
   removed via ``visible_when`` instead of being greyed out, so the panel only ever
   shows controls that can actually do something.

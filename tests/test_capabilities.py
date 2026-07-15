@@ -1,7 +1,7 @@
 """
 The UI/engine contract (ROADMAP.md Phase 3).
 
-v2.0.0's central defect: the Layout tab collected booklet modes, right-to-left,
+0.2.0's central defect: the Layout tab collected booklet modes, right-to-left,
 signatures and page creep, and the engine ignored every one of them. Nothing was
 wrong with either half in isolation — the bug lived in the gap between them, where
 no test could see it.
@@ -56,7 +56,7 @@ class TestEverySettingIsClassified:
     def test_no_setting_escapes_classification(self):
         # The rule that makes the contract hold over time: adding a field to the data
         # model fails here until someone decides, in public, whether the engine
-        # honours it. That decision is what v2.0.0 never had to make.
+        # honours it. That decision is what 0.2.0 never had to make.
         unclassified = sorted(model_paths() - HONOURED - NOT_IMPLEMENTED)
         assert not unclassified, (
             "these model settings are neither HONOURED nor NOT_IMPLEMENTED — classify "
