@@ -1,0 +1,73 @@
+name: Store package
+
+# Builds the Microsoft Store MSIX on demand. Unlike the release MSIX, this one is
+# UNSIGNED (the Store signs uploads and rejects pre-signed ones) and stamped with the
+# identity Partner Center assigned to the account — passed in as inputs, not stored,
+# because they are public identity strings, not secrets.
+#
+# Run it from the Actions tab, or:
+#   gh workflow run "Store package" --ref main \
+#     -f identity_name="Mevit.Laydown" \
+#     -f publisher="CN=..." -f publisher_display="Mevit"
+# The finished Laydown-<version>-store.msix is a build artifact you upload on the
+# Partner Center Packages tab.
+
+on:
+  workflow_dispatch:
+    inputs:
+      identity_name:
+        description: "Package/Identity/Name (e.g. Mevit.Laydown)"
+        required: true
+      publisher:
+        description: "Package/Identity/Publisher (CN=<GUID>)"
+        required: true
+      publisher_display:
+        description: "PublisherDisplayName"
+        required: true
+        default: "Mevit"
+
+permissions:
+  contents: read
+
+jobs:
+  store:
+    name: Build unsigned Store MSIX
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pyinstaller
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Smoke gate
+        run: python -m laydown --smoke
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      # Inputs are passed through env, never interpolated into the run script, so
+      # nothing an input contains can be executed as a command.
+      - name: Build Store MSIX (unsigned, Store identity)
+        run: powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1 -Store
+        env:
+          LAYDOWN_STORE_IDENTITY_NAME: ${{ inputs.identity_name }}
+          LAYDOWN_STORE_PUBLISHER: ${{ inputs.publisher }}
+          LAYDOWN_STORE_PUBLISHER_DISPLAY: ${{ inputs.publisher_display }}
+
+      - name: Show the built package
+        run: Get-ChildItem dist\Laydown-*-store.msix | Format-List Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laydown-store-msix
+          path: dist/Laydown-*-store.msix
+          if-no-files-found: error
