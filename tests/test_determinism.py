@@ -43,20 +43,28 @@ class TestDeterminism:
         assert _content(a) == _content(b)
 
     def test_only_the_file_id_differs_between_runs(self, source_pdf, out_path):
-        # Pins the known/allowed source of byte variance. If a future change makes
-        # output differ for any *other* reason, this test says so.
+        # Pins the known/allowed source of byte variance: the trailer /ID, which MuPDF
+        # randomises per save. If a future change makes output differ for any *other*
+        # reason, this test says so.
+        #
+        # The /ID is normalised out rather than compared by length: its random value
+        # occasionally serialises to a different byte length, so a naive
+        # `len(a) == len(b)` check was flaky. Removing the /ID and comparing the rest
+        # keeps the strong guarantee (nothing but the /ID differs) without that
+        # brittle assumption.
+        import re
         src = source_pdf(n_pages=4)
         a, b = out_path("a.pdf"), out_path("b.pdf")
         impose(_project(src), a)
         impose(_project(src), b)
 
         ra, rb = open(a, "rb").read(), open(b, "rb").read()
-        assert len(ra) == len(rb)
-        differing = [i for i in range(len(ra)) if ra[i] != rb[i]]
-        assert differing, "expected the /ID to differ"
-        lo, hi = min(differing), max(differing)
-        window = ra[max(0, lo - 40):hi + 40]
-        assert b"/ID" in window, "bytes differ somewhere other than the trailer /ID"
+        assert ra != rb, "expected the random /ID to differ between saves"
+        id_array = re.compile(rb"/ID\s*\[[^\]]*\]")
+        assert id_array.search(ra), "expected an /ID array in the trailer"
+        assert id_array.sub(b"/ID[]", ra) == id_array.sub(b"/ID[]", rb), (
+            "output differs somewhere other than the trailer /ID"
+        )
 
     def test_booklet_is_deterministic(self, source_pdf, out_path):
         src = source_pdf(n_pages=8)
