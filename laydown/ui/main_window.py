@@ -14,12 +14,12 @@ from typing import Optional
 
 from PyQt6.QtCore import QSize, QSettings, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import (
-    QAction, QActionGroup, QDragEnterEvent, QDropEvent, QIcon, QKeySequence, QPixmap,
+    QAction, QActionGroup, QDragEnterEvent, QDropEvent, QIcon, QKeySequence,
 )
 from PyQt6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDialogButtonBox, QFileDialog, QFrame,
     QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressDialog, QPushButton,
-    QScrollArea, QStackedWidget, QStatusBar, QTextBrowser, QToolButton,
+    QScrollArea, QSizePolicy, QStackedWidget, QStatusBar, QTextBrowser, QToolButton,
     QVBoxLayout, QWidget,
 )
 
@@ -75,15 +75,40 @@ def _vsep(h=20):
 
 
 def app_icon() -> QIcon:
+    """The application / window icon, assembled from the packaged PNGs.
+
+    An empty QIcon here is exactly what leaves the Windows taskbar button blank, so
+    this must never silently return nothing. We try every plausible asset root — a
+    source checkout, and a PyInstaller *onedir* bundle where the data lives under
+    ``sys._MEIPASS`` (the ``_internal`` folder) or, on some layouts, beside the exe —
+    and fall back to the multi-resolution ``.ico`` if the PNGs can't be found.
+    """
+    roots = []
     if getattr(sys, "frozen", False):
-        base = pathlib.Path(sys._MEIPASS) / "assets" / "icons"
-    else:
-        base = pathlib.Path(__file__).resolve().parent.parent.parent / "assets" / "icons"
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            roots.append(pathlib.Path(meipass) / "assets" / "icons")
+        exe_dir = pathlib.Path(sys.executable).resolve().parent
+        roots.append(exe_dir / "assets" / "icons")
+        roots.append(exe_dir / "_internal" / "assets" / "icons")
+    roots.append(
+        pathlib.Path(__file__).resolve().parent.parent.parent / "assets" / "icons")
+
     icon = QIcon()
-    for size in (16, 24, 32, 48, 64, 128, 256):
-        p = base / f"icon_{size}x{size}.png"
-        if p.exists():
-            icon.addPixmap(QPixmap(str(p)))
+    for base in roots:
+        for size in (16, 24, 32, 48, 64, 128, 256):
+            p = base / f"icon_{size}x{size}.png"
+            if p.exists():
+                icon.addFile(str(p), QSize(size, size))
+        if not icon.isNull():
+            return icon
+
+    # Last resort: the multi-size Windows .ico, wherever it can be found.
+    for base in roots:
+        ico = base / "laydown.ico"
+        if ico.exists():
+            icon.addFile(str(ico))
+            break
     return icon
 
 
@@ -440,20 +465,21 @@ class MainWindow(QMainWindow):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
 
-        # Tab strip built from QToolButtons, not a QTabBar: a QTabBar left-biases an
-        # icon-only tab by ~7px (empty text still reserves layout), so the glyphs sat
-        # off-centre in their buttons. A QToolButton centres its icon exactly.
+        # Tab strip: four QToolButtons that share the panel width equally (each a
+        # quarter), each centring its own icon. QToolButtons are used rather than a
+        # QTabBar because a QTabBar left-biases an icon-only tab by ~7px (its empty
+        # text still reserves layout); a QToolButton centres its icon exactly, and an
+        # Expanding size policy lets the four grow with the panel.
         tab_header = QFrame()
         tab_header.setObjectName("tabheader")
         tab_header.setStyleSheet(f"#tabheader {{ background: {t.RAISED}; }}")
         header_row = QHBoxLayout(tab_header)
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(0)
-        header_row.addStretch(1)
 
         tab_btn_style = (
             f"QToolButton {{ background: transparent; border: none;"
-            f"               border-bottom: 2px solid transparent; padding: 9px 18px; }}"
+            f"               border-bottom: 2px solid transparent; padding: 9px 0; }}"
             f"QToolButton:hover:!checked {{ background: {t.HOVER_WASH}; }}"
             f"QToolButton:checked {{ border-bottom: 2px solid {t.ACCENT};"
             f"                       background: {t.SELECTED_WASH}; }}"
@@ -470,11 +496,11 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tab.name)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(tab_btn_style)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self._tab_group.addButton(btn, index)
             self._tab_buttons.append(btn)
-            header_row.addWidget(btn)
+            header_row.addWidget(btn, 1)   # equal stretch → equal quarter widths
 
-        header_row.addStretch(1)
         column.addWidget(tab_header)
 
         self._heading = QLabel(SCHEMA[0].name)
@@ -779,14 +805,32 @@ class MainWindow(QMainWindow):
             webbrowser.open(f"file://{folder}")
 
     def _on_about(self):
-        QMessageBox.about(
-            self, "About Laydown",
-            f"<h2 style='color:{t.ACCENT}'>Laydown {__version__}</h2>"
-            "<p>PDF imposition for commercial printing.</p>"
-            "<p>Built with Python, PyQt6 and PyMuPDF. Imposition is vector: pages are "
-            "embedded, never rasterized.</p>"
-            "<p>Licensed under the GNU AGPL v3.0.</p>"
+        html = (
+            f"<h2 style='color:{t.ACCENT}; margin-bottom:2px'>Laydown {__version__}</h2>"
+            f"<p style='color:{t.FG_MUTED}; margin-top:0'>PDF imposition for commercial printing</p>"
+            "<p>Lay your PDF pages out on the press sheet — n-up layouts, booklets "
+            "(saddle stitch and perfect binding), printer's marks, and trim/bleed-aware "
+            "placement — with a live preview of the finished sheet before you print.</p>"
+            "<p>Imposition is <b>vector</b>: pages are embedded, never rasterized, so quality "
+            "always follows the source. Everything runs on your machine — nothing is uploaded, "
+            "no account, no telemetry.</p>"
+            "<p>Built with Python, PyQt6 and PyMuPDF.</p>"
+            "<p><b>Created by Daniel Mevit</b> — "
+            "<a href='https://damt.xyz'>damt.xyz</a><br>"
+            "Free and open source under the "
+            "<a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU AGPL v3.0</a> · "
+            "<a href='https://github.com/danielmevit/laydown'>source on GitHub</a></p>"
+            f"<p style='color:{t.FG_FAINT}'>&copy; 2026 Daniel Mevit</p>"
         )
+        box = QMessageBox(self)
+        box.setWindowTitle("About Laydown")
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(html)
+        box.setIconPixmap(app_icon().pixmap(72, 72))
+        # QMessageBox labels don't open links by default; enable it so damt.xyz works.
+        for label in box.findChildren(QLabel):
+            label.setOpenExternalLinks(True)
+        box.exec()
 
     # ── cleanup ──────────────────────────────────
 

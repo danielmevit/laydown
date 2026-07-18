@@ -23,20 +23,47 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def run_gui(pdf: str = "") -> int:
-    import ctypes
+def _claim_windows_taskbar_identity() -> None:
+    """Give the *unpackaged* Windows build (portable ZIP / loose exe) its own taskbar
+    identity so Windows groups its windows under one button and draws our window icon
+    on it.
 
+    Two traps this avoids:
+
+    * The identity must NOT equal the MSIX package identity (``LaydownTeam.Laydown``).
+      When it did, a user who also had the MSIX/Store build installed got a *blank*
+      taskbar button for the portable: Windows resolved the taskbar icon through that
+      installed package — which the portable isn't running inside — and found nothing.
+    * A packaged (MSIX) run already gets its identity from the package. Overriding it
+      would break the Store app's identity, so we only set one when NOT inside a package.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        # GetCurrentPackageFullName returns APPMODEL_ERROR_NO_PACKAGE (15700) when the
+        # process is running unpackaged; anything else means we're inside an MSIX.
+        length = wintypes.UINT(0)
+        rc = ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(length), None)
+        if rc == 15700:  # unpackaged -> claim a distinct identity of our own
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "DanielMevit.Laydown")
+    except Exception:
+        # A taskbar identity is a nicety; never crash startup over it. Without it the
+        # taskbar simply falls back to the exe's own embedded icon, which is fine.
+        pass
+
+
+def run_gui(pdf: str = "") -> int:
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtGui import QFont
 
     from laydown.ui import theme
     from laydown.ui.main_window import MainWindow, app_icon
 
-    if sys.platform == "win32":
-        # Matches the MSIX Identity Name, so the taskbar groups the packaged app and
-        # the portable build under one icon instead of two.
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "LaydownTeam.Laydown")
+    _claim_windows_taskbar_identity()
 
     app = QApplication(sys.argv)
     theme.apply(app)

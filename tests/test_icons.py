@@ -54,6 +54,17 @@ class TestWiredIntoTheWindow:
         for name in mw._TAB_ICON_NAMES:
             assert name in registered, f"tab icon {name!r} is not registered"
 
+    def test_app_icon_is_never_empty(self, app):
+        # An empty window icon is what leaves the Windows taskbar button blank. The
+        # loader tries several roots and falls back to the .ico, so it must always
+        # return something with real sizes — in a checkout and in a frozen bundle.
+        from laydown.ui.main_window import app_icon
+        icon = app_icon()
+        assert not icon.isNull(), "app icon is empty; the taskbar button would be blank"
+        sizes = {(s.width(), s.height()) for s in icon.availableSizes()}
+        assert sizes, "app icon carries no sizes"
+        assert max(w for w, _ in sizes) >= 32, f"app icon has only tiny sizes: {sizes}"
+
     def test_the_window_builds_with_every_icon_present(self, app):
         from laydown.ui.main_window import MainWindow
         w = MainWindow()
