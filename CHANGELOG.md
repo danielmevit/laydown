@@ -4,6 +4,14 @@ All notable changes to Laydown (formerly PressReady) are documented here.
 
 ---
 
+## [0.4.3] — 2026-07-18
+
+- **Security: the dropdown-chevron image is written to the per-user cache, not the shared
+  temp dir.** 0.4.2 wrote it to a predictable path in the world-writable temp directory, which
+  on a multi-user system invites a symlink/collision (the save would follow a planted symlink).
+  Low risk for a single-user desktop app, but real; it now goes to `QStandardPaths`
+  `CacheLocation` with a private `mkdtemp` (0700) fallback. Flagged by the commit security review.
+
 ## [0.4.2] — 2026-07-18
 
 UI fixes and polish from hands-on use.

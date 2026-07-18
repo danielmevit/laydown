@@ -153,8 +153,8 @@ def _combo_arrow_png() -> str:
     Styling a QComboBox with a stylesheet makes Fusion stop drawing its native
     drop-down arrow, so the combos lost their "this is a dropdown" indicator. QSS can
     only point `::down-arrow` at an image file, and we render icons at runtime rather
-    than ship PNGs — so this draws the chevron once, caches it in the temp dir, and
-    hands the path to the stylesheet.
+    than ship PNGs — so this draws the chevron once, caches it in the per-user cache
+    dir, and hands the path to the stylesheet.
     """
     global _COMBO_ARROW_PATH
     if _COMBO_ARROW_PATH and os.path.exists(_COMBO_ARROW_PATH):
