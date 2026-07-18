@@ -160,7 +160,7 @@ def _combo_arrow_png() -> str:
     if _COMBO_ARROW_PATH and os.path.exists(_COMBO_ARROW_PATH):
         return _COMBO_ARROW_PATH
     try:
-        from PyQt6.QtCore import QRectF, Qt
+        from PyQt6.QtCore import QRectF, Qt, QStandardPaths
         from PyQt6.QtGui import QImage, QPainter
         from PyQt6.QtSvg import QSvgRenderer
 
@@ -177,7 +177,17 @@ def _combo_arrow_png() -> str:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         renderer.render(painter, QRectF(0, 0, size, size))
         painter.end()
-        path = os.path.join(tempfile.gettempdir(), "laydown_combo_arrow.png")
+
+        # Write into the *per-user* cache dir, not the world-writable temp dir with a
+        # predictable name — that invited a symlink/collision from another user on a
+        # shared system. The fallback is a private, unpredictable per-process dir
+        # (mkdtemp is created 0700), so it's safe even without a cache location.
+        cache = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation)
+        if cache:
+            os.makedirs(cache, exist_ok=True)
+            path = os.path.join(cache, "combo_arrow.png")
+        else:
+            path = os.path.join(tempfile.mkdtemp(prefix="laydown-"), "combo_arrow.png")
         image.save(path)
         _COMBO_ARROW_PATH = path.replace(os.sep, "/")
     except Exception:
