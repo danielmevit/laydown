@@ -18,6 +18,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: "Build only Windows (faster iteration; artifacts only, never publishes)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -87,6 +92,8 @@ jobs:
 
   linux:
     name: Linux (x86_64)
+    # Skipped when a dispatch asks for Windows only; always runs on a tag release.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.windows_only) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,6 +136,8 @@ jobs:
 
   macos:
     name: macOS (${{ matrix.arch }})
+    # Skipped when a dispatch asks for Windows only; always runs on a tag release.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.windows_only) }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

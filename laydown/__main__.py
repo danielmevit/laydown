@@ -56,6 +56,58 @@ def _claim_windows_taskbar_identity() -> None:
         pass
 
 
+def _write_icon_debug(app) -> None:
+    """TEMPORARY diagnostic. A windowed PyInstaller build has no stdout, so to trace a
+    blank-icon report we dump how the icon actually resolves at runtime to a file next
+    to the exe (and the home dir as backup). Remove before the real release."""
+    try:
+        import pathlib
+        from PyQt6.QtGui import QPixmap
+        from laydown.ui.main_window import app_icon
+
+        lines = [
+            f"Laydown {__version__} icon diagnostic",
+            f"platform={sys.platform}  frozen={getattr(sys, 'frozen', False)}",
+            f"_MEIPASS={getattr(sys, '_MEIPASS', None)}",
+            f"executable={sys.executable}",
+            "",
+        ]
+        roots = []
+        if getattr(sys, "frozen", False):
+            mp = getattr(sys, "_MEIPASS", None)
+            if mp:
+                roots.append(pathlib.Path(mp) / "assets" / "icons")
+            ed = pathlib.Path(sys.executable).resolve().parent
+            roots.append(ed / "assets" / "icons")
+            roots.append(ed / "_internal" / "assets" / "icons")
+        roots.append(
+            pathlib.Path(__file__).resolve().parent.parent.parent / "assets" / "icons")
+        for r in roots:
+            p = r / "icon_32x32.png"
+            lines.append(f"root {r}\n    dir={r.exists()} icon32={p.exists()}")
+            if p.exists():
+                pm = QPixmap(str(p))
+                lines.append(f"    QPixmap isNull={pm.isNull()} {pm.width()}x{pm.height()}")
+        ic = app_icon()
+        lines += [
+            "",
+            f"app_icon().isNull()={ic.isNull()}",
+            f"app_icon sizes={[(s.width(), s.height()) for s in ic.availableSizes()]}",
+            f"app.windowIcon().isNull()={app.windowIcon().isNull()}",
+        ]
+        text = "\n".join(lines)
+        for target in (
+            pathlib.Path(sys.executable).resolve().parent / "laydown-icon-debug.txt",
+            pathlib.Path.home() / "laydown-icon-debug.txt",
+        ):
+            try:
+                target.write_text(text, encoding="utf-8")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def run_gui(pdf: str = "") -> int:
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtGui import QFont
@@ -70,6 +122,7 @@ def run_gui(pdf: str = "") -> int:
     app.setApplicationName("Laydown")
     app.setApplicationVersion(__version__)
     app.setWindowIcon(app_icon())
+    _write_icon_debug(app)   # TEMPORARY — remove before release
     app.setFont(QFont("Segoe UI", 9))
 
     win = MainWindow()
