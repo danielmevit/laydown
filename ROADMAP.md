@@ -23,6 +23,31 @@ starts (`_refs/ai-full-build-recipe.md` §4). Sizes: **S** ≈ a session, **M** 
   <https://danielmevit.github.io/laydown/>. The February v2.0.0 release was renumbered
   v0.2.0. No 32-bit Windows build — PyQt6 ships no win32 wheel (see GOTCHAS).
 
+## Next — UI polish (candidate 0.4.2, from user feedback 2026-07-18)
+Small, concrete UX fixes. Each notes where the code lives.
+
+- [ ] **Double-click the empty canvas to open a PDF.** The "Open a PDF to get started"
+      placeholder should open the file dialog on double-click, like the drop zone in most
+      apps. Add `mouseDoubleClickEvent` to `SheetCanvas` (`ui/preview_panel.py`, near
+      `_show_placeholder`) → emit a signal → `ui/main_window.py` connects it to `_on_open`.
+      (Drag-drop and Ctrl+O already work; this adds the obvious third way.)
+- [ ] **Page-number overlays: bigger and regular weight, not bold.** In
+      `preview_panel.draw_overlays` the magenta numbers use
+      `fs = max(14, int(min(pw, ph) * 0.18))` then `f.setBold(True)`. Raise the size
+      (bump the `0.18` factor and/or the `14` floor) and **drop the bold** so they render
+      in the regular weight.
+- [ ] **Make the fit-page and actual-size icons visually distinct.** They currently both
+      read as a square-with-corners (fit-page = Lucide `maximize`, actual-size = Lucide
+      `scan`) and are easy to confuse. Give actual-size a clearly different glyph — a
+      "1:1"/percent-style mark, or `ratio`/`square` — keeping fit-page as `maximize`.
+      (`ui/main_window.py` `_create_toolbar`; add the new glyph to `ui/icons.py`.)
+- [ ] **Toolbar layout: centre the view-mode icons, right-align the zoom group.** Rework
+      `_create_toolbar` so the view-mode cluster sits centred and the whole zoom/fit group
+      (zoom in/out, fit-width, fit-page, actual-size) hugs the section's right edge.
+      ⚠️ **Clarify first:** the user called these "the 4 main icons", but the left cluster
+      is currently **three** column-view buttons (1/2/4-up). Confirm whether they mean those
+      three (centre them) or want a fourth view mode added, before implementing.
+
 ## Not done from the original plan (deliberately)
 - **Work-and-turn / work-and-tumble.** Not orderings but press-form techniques: both forms
   go on one double-size plate and the sheet is printed twice from it. Subtly wrong here
