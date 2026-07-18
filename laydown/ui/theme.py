@@ -15,6 +15,8 @@ identity and is already baked into the app icon and MSIX tiles. What is borrowed
 the structure, density and control anatomy, not the branding.
 """
 
+import os
+import tempfile
 from math import cos, pi, sin
 
 from PyQt6.QtGui import QColor, QPalette
@@ -141,6 +143,49 @@ def apply(app) -> None:
     app.setStyleSheet(stylesheet())
 
 
+_COMBO_ARROW_PATH = None
+
+
+def _combo_arrow_png() -> str:
+    """
+    Render a Lucide chevron-down to a PNG and return its path, forward-slashed for QSS.
+
+    Styling a QComboBox with a stylesheet makes Fusion stop drawing its native
+    drop-down arrow, so the combos lost their "this is a dropdown" indicator. QSS can
+    only point `::down-arrow` at an image file, and we render icons at runtime rather
+    than ship PNGs — so this draws the chevron once, caches it in the temp dir, and
+    hands the path to the stylesheet.
+    """
+    global _COMBO_ARROW_PATH
+    if _COMBO_ARROW_PATH and os.path.exists(_COMBO_ARROW_PATH):
+        return _COMBO_ARROW_PATH
+    try:
+        from PyQt6.QtCore import QRectF, Qt
+        from PyQt6.QtGui import QImage, QPainter
+        from PyQt6.QtSvg import QSvgRenderer
+
+        svg = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+            f'stroke="{FG_MUTED}" stroke-width="2.5" stroke-linecap="round" '
+            f'stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
+        ).encode("utf-8")
+        size = 28
+        renderer = QSvgRenderer(svg)
+        image = QImage(size, size, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        renderer.render(painter, QRectF(0, 0, size, size))
+        painter.end()
+        path = os.path.join(tempfile.gettempdir(), "laydown_combo_arrow.png")
+        image.save(path)
+        _COMBO_ARROW_PATH = path.replace(os.sep, "/")
+    except Exception:
+        # Worst case, QSS gets image: url("") and simply shows no arrow — harmless.
+        _COMBO_ARROW_PATH = ""
+    return _COMBO_ARROW_PATH
+
+
 def stylesheet() -> str:
     """
     The whole application's QSS.
@@ -184,7 +229,8 @@ QLineEdit[keyboardFocus="true"], QComboBox[keyboardFocus="true"],
 QSpinBox[keyboardFocus="true"], QDoubleSpinBox[keyboardFocus="true"] {{
     border-color: {ACCENT}; outline: none;
 }}
-QComboBox::drop-down {{ border: none; width: 18px; }}
+QComboBox::drop-down {{ border: none; width: 22px; }}
+QComboBox::down-arrow {{ image: url("{_combo_arrow_png()}"); width: 12px; height: 12px; }}
 QComboBox QAbstractItemView {{
     background: {RAISED}; color: {FG}; border: 1px solid {BORDER};
     border-radius: {RADIUS_MD}px; padding: {SPACE_1}px; outline: none;

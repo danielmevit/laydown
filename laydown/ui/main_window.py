@@ -290,6 +290,7 @@ class MainWindow(QMainWindow):
         column.addWidget(self._create_toolbar())
         column.addWidget(self._create_preflight_bar())
         self._canvas = SheetCanvas()
+        self._canvas.open_requested.connect(self._on_open)  # double-click empty area
         column.addWidget(self._canvas, 1)
         root.addWidget(left, 1)
 
@@ -336,11 +337,8 @@ class MainWindow(QMainWindow):
             button = _tool_btn(lucide(glyph), tip)
             button.clicked.connect(slot)
             row.addWidget(button)
-        row.addStretch(1)
-
-        self._zoom_label = QLabel("")
-        self._zoom_label.setStyleSheet(f"color: {t.FG_FAINT}; font-size: {t.TEXT_2XS}px;")
-        row.addWidget(self._zoom_label)
+        # No trailing stretch: the single stretch above pushes the whole zoom/fit
+        # group to the right edge, with the column-view buttons kept at the left.
         return bar
 
     def _create_preflight_bar(self):
@@ -443,11 +441,11 @@ class MainWindow(QMainWindow):
         column.setSpacing(0)
 
         self._tab_bar = QTabBar()
-        self._tab_bar.setExpanding(True)
+        self._tab_bar.setExpanding(False)   # content-sized, so it can be centred as a group
         self._tab_bar.setDrawBase(False)
         self._tab_bar.setIconSize(QSize(_TAB_SZ, _TAB_SZ))
         self._tab_bar.setStyleSheet(
-            f"QTabBar {{ background: {t.RAISED}; }}"
+            f"QTabBar {{ background: transparent; }}"
             f"QTabBar::tab {{ padding: 9px 16px; border: none;"
             f"                border-bottom: 2px solid transparent; }}"
             f"QTabBar::tab:selected {{ border-bottom: 2px solid {t.ACCENT};"
@@ -457,7 +455,18 @@ class MainWindow(QMainWindow):
         for index, tab in enumerate(SCHEMA):
             self._tab_bar.addTab(lucide(_TAB_ICON_NAMES[index], _TAB_SZ), "")
             self._tab_bar.setTabToolTip(index, tab.name)
-        column.addWidget(self._tab_bar)
+
+        # Full-width header strip with the four tab icons centred in the middle.
+        tab_header = QFrame()
+        tab_header.setObjectName("tabheader")
+        tab_header.setStyleSheet(f"#tabheader {{ background: {t.RAISED}; }}")
+        header_row = QHBoxLayout(tab_header)
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(0)
+        header_row.addStretch(1)
+        header_row.addWidget(self._tab_bar)
+        header_row.addStretch(1)
+        column.addWidget(tab_header)
 
         self._heading = QLabel(SCHEMA[0].name)
         self._heading.setStyleSheet(

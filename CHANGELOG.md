@@ -4,6 +4,25 @@ All notable changes to Laydown (formerly PressReady) are documented here.
 
 ---
 
+## [0.4.2] — 2026-07-18
+
+UI fixes and polish from hands-on use.
+
+- **Fixed: zoom no longer spawns windows.** Clicking zoom in/out opened stray windows of the
+  sheets and dislocated the preview. `_clear_grid` called `setParent(None)` on each sheet
+  widget, which reparents a *visible* child to the desktop — turning it into a top-level
+  window — and every zoom rebuilds the grid. Now `hide()` + `deleteLater()`. Reproduced in
+  isolation and pinned by `tests/test_preview_zoom.py`.
+- **Double-click the empty canvas to open a PDF**, alongside Ctrl+O and drag-and-drop.
+- **Page numbers in the preview are bigger and regular weight** (were smaller and bold).
+- **Distinct fit-page and actual-size icons.** They were both a square-with-corners and easy
+  to confuse; actual-size is now a plain sheet rectangle.
+- **The four settings tabs (Source/Layout/Sheet/Marks) are centred** in the panel header
+  instead of clustering left.
+- **The zoom/fit group is right-aligned** in the toolbar; the column-view buttons stay left.
+- **Dropdowns show a chevron.** Styling the combo boxes had suppressed Fusion's native arrow,
+  so they lost their "this opens a list" cue; a Lucide chevron is rendered back in.
+
 ## [0.4.1] — 2026-07-17
 
 - **UI icons are now the [Lucide](https://lucide.dev) set.** The toolbar (column views, zoom,

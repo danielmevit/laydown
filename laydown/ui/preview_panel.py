@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea,
     QGridLayout, QSizePolicy, QApplication,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QRectF, QPointF
+from PyQt6.QtCore import Qt, QThread, QEvent, pyqtSignal, QTimer, QRectF, QPointF
 from PyQt6.QtGui import QPixmap, QImage, QFont, QPainter, QPen, QColor
 
 import fitz
@@ -85,9 +85,10 @@ def draw_overlays(
             painter.drawLine(QPointF(cx, py0), QPointF(cx, py0 + min(20 * scale / 1.5, ph * 0.06)))
 
         if show_numbers and c.page_num > 0:
-            fs = max(14, int(min(pw, ph) * 0.18))
+            # Bigger and regular weight (not bold) — the numbers should read clearly
+            # without shouting.
+            fs = max(22, int(min(pw, ph) * 0.28))
             f = QFont(t.FONT_FAMILY, fs)
-            f.setBold(True)
             painter.setFont(f)
             painter.setPen(MAGENTA)
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(c.page_num))
@@ -166,6 +167,9 @@ class _RenderWorker(QThread):
 class SheetCanvas(QScrollArea):
     """Scrollable multi-sheet preview with zoom and column controls."""
 
+    #: emitted when the user double-clicks the empty canvas (the "open a PDF" area)
+    open_requested = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._project: Optional[Project] = None
@@ -191,6 +195,17 @@ class SheetCanvas(QScrollArea):
         self._debounce.timeout.connect(self._do_render)
 
         self._setup_ui()
+        # Double-click the empty preview to open a PDF, like the drop zone in most
+        # apps. Filtered on the viewport because that is where the click lands.
+        self.viewport().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if (obj is self.viewport()
+                and event.type() == QEvent.Type.MouseButtonDblClick
+                and not self._pixmaps):          # only over the "open a PDF" placeholder
+            self.open_requested.emit()
+            return True
+        return super().eventFilter(obj, event)
 
     def _setup_ui(self):
         self.setWidgetResizable(True)
@@ -205,7 +220,7 @@ class SheetCanvas(QScrollArea):
 
     def _show_placeholder(self):
         self._clear_grid()
-        lbl = QLabel("Open a PDF to get started\n\nFile \u2192 Open PDF  (Ctrl+O)\nor drag and drop a PDF here")
+        lbl = QLabel("Open a PDF to get started\n\nDouble-click here, press Ctrl+O,\nor drag and drop a PDF")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setStyleSheet(f"color: {t.FG_FAINT}; font-size: {t.TEXT_LG}px; padding: 60px;")
         self._grid.addWidget(lbl, 0, 0)
