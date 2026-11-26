@@ -15,6 +15,8 @@ const body = `# Laydown
 - Source code: ${REPO_URL} (AGPL-3.0-only)
 - Support: support@damt.xyz
 - Author: Daniel Mevit (https://damt.xyz)
+- Development: built by damt.xyz with extensive use of generative AI tools (code, tests, documentation, packaging, website, store listing and marketing materials, maintenance),
+  steered by a real person who decides what is released. Laydown itself runs no AI model.
 
 ## What it does
 - N-up: 1/2/4/6/8/9/16 per sheet, or arbitrary rows x columns, with optional auto-rotate.

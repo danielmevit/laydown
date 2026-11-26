@@ -152,6 +152,14 @@ deliberate; there's a story behind it in [`docs/ai/DECISIONS.md`](docs/ai/DECISI
 
 The headless CLI never loads Qt: exit 0 ok / 1 error / 2 blocked by a preflight error.
 
+## Development & AI disclosure
+
+Laydown is designed, directed and maintained by [damt.xyz](https://damt.xyz) with extensive use of generative AI tools, from start to finish: most of the application code and tests, the documentation, packaging and build automation, the website, the store listing and other marketing materials, and ongoing maintenance.
+
+This applies only to how Laydown is made and marketed. At runtime Laydown uses no AI model: it arranges your pages with fixed, deterministic rules on your own computer, and nothing is sent anywhere.
+
+Throughout, a real person steers the work and decides what is released.
+
 ## License
 
 [GNU AGPL-3.0](LICENSE) — free to use, study and modify. If you pass it on, or run a modified
