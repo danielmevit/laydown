@@ -246,7 +246,7 @@ jobs:
             **Linux** — extract the `.tar.gz` and run `./Laydown`. No Python needed.
 
             What changed is in [CHANGELOG.md](https://github.com/danielmevit/laydown/blob/main/CHANGELOG.md).
-            The site is at https://danielmevit.github.io/laydown/.
+            The site is at https://laydown.damt.xyz/.
 
             **Upgrading from PressReady?** This app was called PressReady up to 0.3.0
             (renamed to avoid clashing with Fujifilm's product of the same name). To

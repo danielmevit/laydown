@@ -23,8 +23,8 @@ selling point.
 | Category | **Productivity** |
 | Subcategory | (leave blank — Productivity has none) |
 | Secondary category | (optional; leave blank) |
-| Privacy policy URL | See note ▼ — likely required for a full-trust app; use `https://danielmevit.github.io/laydown/privacy/` once the page exists |
-| Website | `https://danielmevit.github.io/laydown/` |
+| Privacy policy URL | See note ▼ — likely required for a full-trust app; use `https://laydown.damt.xyz/privacy/` once the page exists |
+| Website | `https://laydown.damt.xyz/` |
 | Support contact info | `https://github.com/danielmevit/laydown/issues` (or a support email if you prefer) |
 
 **Product declarations** (checkboxes — all of these are **No / unchecked** for Laydown):

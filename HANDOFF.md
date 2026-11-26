@@ -15,7 +15,7 @@ _Last updated: 2026-10-15, at version 0.4.7._
 | **What it is** | Laydown — a desktop app for **PDF imposition** (laying source pages onto press sheets). Python + PyQt6 UI + PyMuPDF engine. |
 | **Current version** | **0.4.7** (`laydown/__init__.py` is the single source of truth) |
 | **Repo** | <https://github.com/danielmevit/laydown> (default branch `main`; work on `dev`, merge to `main` on release) |
-| **Website** | <https://danielmevit.github.io/laydown/> — Astro, in `site/`, deploys from `main` |
+| **Website** | <https://laydown.damt.xyz/> — Astro, in `site/`, deploys from `main` |
 | **GitHub releases** | **0.4.7**, all platforms — Windows (MSIX + portable), macOS (arm64 + Intel), Linux x86_64 |
 | **Microsoft Store** | **Submitted 2026-07-18, outcome UNVERIFIED as of 2026-10-12 (no public listing found).** Package version 0.4.1. See §3. |
 | **Tests** | the full suite, run headless anywhere (`pytest`). CI gates every release on them. |
@@ -76,7 +76,7 @@ than the usual 1–3 days because a human reviews the `runFullTrust` justificati
 - **runFullTrust:** a restricted-capability **warning** (not an error). The justification was
   provided on the Submission Options page; the text is in `docs/store/SUBMISSION.md` §8a.
 - **Listing / Properties / Privacy / Age rating:** all filled from `docs/store/LISTING.md` and
-  `docs/store/SUBMISSION.md`. Privacy policy URL: <https://danielmevit.github.io/laydown/privacy/>
+  `docs/store/SUBMISSION.md`. Privacy policy URL: <https://laydown.damt.xyz/privacy/>
   (live). Age rating: everyone. Price: free, all markets.
 
 ### What to do when the review comes back

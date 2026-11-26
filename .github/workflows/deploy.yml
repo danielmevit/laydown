@@ -1,7 +1,7 @@
 name: Deploy Laydown to Pages
 
 # Builds the Astro site in site/ and publishes it to
-# https://danielmevit.github.io/laydown
+# https://laydown.damt.xyz/
 #
 # (This replaced a version that uploaded the repository root. That would have served
 # the raw repo as the website — no index.html at the root, so no site.)
