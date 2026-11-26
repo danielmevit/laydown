@@ -1,8 +1,8 @@
 import { defineConfig } from 'astro/config';
 
-// Served from https://danielmevit.github.io/laydown — the base matters, or every
-// asset 404s once it's deployed under the project path.
+// Served at https://laydown.damt.xyz/ (GitHub Pages custom domain); the old
+// danielmevit.github.io/laydown/ address redirects here.
 export default defineConfig({
-  site: 'https://danielmevit.github.io',
-  base: '/laydown',
+  site: 'https://laydown.damt.xyz',
+  base: '/',
 });

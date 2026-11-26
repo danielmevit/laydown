@@ -1,5 +1,8 @@
 ---
 import fs from "node:fs";
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import { STORE_URL, REPO_URL, RELEASES_URL } from "../lib/site";
 
 // The version has one home: laydown/__init__.py. Read it at build time rather
 // than restate it here, or the site will eventually advertise a version that isn't
@@ -13,14 +16,10 @@ if (!match) throw new Error("Could not read __version__ from laydown/__init__.py
 const version = match[1];
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-const title = "Laydown — free PDF imposition for print";
+const title = "Laydown — PDF imposition for print";
 const description =
-  "Free, open-source PDF imposition. Lay your pages out on the press sheet — n-up, booklets, marks and bleed — on Windows, macOS and Linux. Runs on your machine, nothing uploaded.";
+  "Open-source PDF imposition for Windows. Lay your pages out on the press sheet — n-up, booklets, marks and bleed. Runs on your machine, nothing uploaded. On the Microsoft Store with a 15-day free trial; also for macOS and Linux.";
 const author = "Daniel Mevit";
-const repo = "https://github.com/danielmevit/laydown";
-const releases = `${repo}/releases`;
-const latest = `${repo}/releases/latest`;
-const year = 2026;
 
 const features = [
   {
@@ -51,12 +50,16 @@ const features = [
 
 const faqs = [
   {
-    q: "Does it upload my documents?",
-    a: "No. There's no network code in it at all. It opens your file, writes a new one, and that's the whole story.",
+    q: "What does it cost?",
+    a: "Laydown is a one-time purchase on the Microsoft Store, with a 15-day free trial first. No subscription and no ads.",
   },
   {
-    q: "Does it cost anything?",
-    a: "No, and there's no paid tier. It's AGPL-3.0 — free to use, study and modify.",
+    q: "Is it safe to install?",
+    a: "Yes. Laydown comes from the Microsoft Store, which checks every app before it is listed. Laydown has no network code and uploads nothing.",
+  },
+  {
+    q: "Does it upload my documents?",
+    a: "No. There's no network code in it at all. It opens your file, writes a new one, and that's the whole story.",
   },
   {
     q: "Will my pages lose quality?",
@@ -69,6 +72,14 @@ const faqs = [
   {
     q: "Can it do work-and-turn?",
     a: "Not yet. That's a press technique where both forms go on one plate, and getting it subtly wrong wastes plates and paper — so it stays out until someone who runs a press has checked it.",
+  },
+  {
+    q: "Can I use it on macOS or Linux?",
+    a: "Yes. Laydown runs on macOS 11 or later (Apple silicon and Intel) and on 64-bit Linux. Those builds are on GitHub; the Microsoft Store is for Windows.",
+  },
+  {
+    q: "How do I remove it?",
+    a: "Uninstall it from Windows Settings; that also removes its settings.",
   },
 ];
 ---
@@ -92,7 +103,7 @@ const faqs = [
     <meta name="description" content={description} />
     <meta
       name="keywords"
-      content="pdf imposition, imposition software, n-up pdf, booklet printing, saddle stitch imposition, perfect binding, impose pdf pages, crop marks, bleed and trim, prepress software, free imposition software, open source imposition, Imposition Wizard alternative, Quite Imposing alternative, signature imposition, page creep, gang up printing, print shop software"
+      content="pdf imposition, imposition software, n-up pdf, booklet printing, saddle stitch imposition, perfect binding, impose pdf pages, crop marks, bleed and trim, prepress software, open source imposition, Imposition Wizard alternative, Quite Imposing alternative, signature imposition, page creep, gang up printing, print shop software"
     />
     <meta name="author" content={author} />
 
@@ -106,7 +117,8 @@ const faqs = [
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://danielmevit.github.io/laydown/" />
+    <link rel="canonical" href="https://laydown.damt.xyz/" />
+    <meta property="og:url" content="https://laydown.damt.xyz/" />
     <meta
       property="og:image"
       content="https://raw.githubusercontent.com/DanielMevit/Laydown/main/assets/screenshot.png"
@@ -114,22 +126,32 @@ const faqs = [
     <meta property="og:site_name" content="Laydown" />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <script type="application/ld+json" is:inline set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      name: "Laydown",
-      applicationCategory: "DesignApplication",
-      operatingSystem: "Windows 10, Windows 11, macOS 11+, Linux",
-      description:
-        "Free, open-source PDF imposition for commercial printing. N-up, booklets, signatures, creep, printer marks, bleed and trim-box aware. Runs locally.",
-      url: "https://danielmevit.github.io/laydown/",
-      downloadUrl: "https://github.com/danielmevit/laydown/releases",
-      softwareVersion: version,
-      author: { "@type": "Person", name: author, url: "https://github.com/danielmevit" },
-      license: "https://www.gnu.org/licenses/agpl-3.0.html",
-      isAccessibleForFree: true,
-      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-    })} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify([
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: "Laydown",
+        applicationCategory: "DesignApplication",
+        operatingSystem: "Windows 10, Windows 11",
+        description,
+        url: "https://laydown.damt.xyz/",
+        downloadUrl: STORE_URL,
+        installUrl: STORE_URL,
+        softwareVersion: version,
+        author: { "@type": "Person", name: author, url: "https://github.com/danielmevit" },
+        publisher: { "@type": "Organization", name: "damt.xyz", url: "https://damt.xyz" },
+        license: "https://www.gnu.org/licenses/agpl-3.0.html",
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faqs.map((f) => ({
+          "@type": "Question",
+          name: f.q,
+          acceptedAnswer: { "@type": "Answer", text: f.a },
+        })),
+      },
+    ])} />
 
     <style is:global>
       :root {
@@ -144,10 +166,8 @@ const faqs = [
         --border: #2a2724;
         --accent: #d07b24;
         --accent-hi: #e8912f;
-        --accent-deep: #a8631c;
         --ink: #ff0090; /* the preview overlay colour — used sparingly, as in the app */
         --radius: 14px;
-        --wrap: 1080px;
       }
 
       * { box-sizing: border-box; }
@@ -166,29 +186,13 @@ const faqs = [
       img { max-width: 100%; height: auto; display: block; }
       a { color: var(--accent-hi); }
 
-      .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 1.5rem; }
+      .wrap { padding: 0 clamp(16px, 4vw, 64px); }
 
       h1, h2, h3 { color: var(--heading); line-height: 1.2; }
 
-      /* ---------- nav ---------- */
-      nav {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 1.1rem 0; gap: 1rem;
-      }
-      .brand {
-        display: flex; align-items: center; gap: 0.6rem;
-        font-weight: 700; color: var(--heading); text-decoration: none; font-size: 1.15rem;
-      }
-      .brand img { width: 26px; height: 26px; border-radius: 6px; flex: none; }
-      nav .links { display: flex; align-items: center; gap: 1.3rem; }
-      nav .links a {
-        color: var(--muted); text-decoration: none; font-weight: 500; font-size: 0.95rem;
-      }
-      nav .links a:hover { color: var(--heading); }
-
       .btn {
         display: inline-flex; align-items: center; gap: 0.5rem;
-        background: var(--accent); color: #fff !important;
+        background: var(--accent); color: #141414 !important;
         padding: 0.7rem 1.25rem; border-radius: 999px;
         font-weight: 600; text-decoration: none; border: 1px solid transparent;
         transition: background .12s ease, transform .12s ease;
@@ -199,7 +203,7 @@ const faqs = [
       .btn.big { padding: 0.9rem 1.6rem; font-size: 1.02rem; }
 
       /* ---------- hero ---------- */
-      .hero { padding: 3.5rem 0 1rem; text-align: center; }
+      .hero { padding-block: 3.5rem 1rem; text-align: center; }
       .hero h1 { font-size: clamp(2.1rem, 5vw, 3.3rem); margin: 0 0 1rem; letter-spacing: -0.02em; }
       .hero h1 .hl { color: var(--accent-hi); }
       .hero p.lead {
@@ -207,9 +211,11 @@ const faqs = [
         color: var(--text);
       }
       .cta { display: flex; gap: 0.7rem; justify-content: center; flex-wrap: wrap; }
-      .under-cta { color: var(--muted); font-size: 0.85rem; margin-top: 0.9rem; }
+      .under-cta { color: var(--text); font-size: 0.92rem; margin: 0.9rem 0 0; }
+      .under-cta.meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.35rem; }
 
       .shot {
+        width: min(100%, 1400px);
         margin: 2.5rem auto 0; border: 1px solid var(--border); border-radius: var(--radius);
         overflow: hidden; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
       }
@@ -220,7 +226,9 @@ const faqs = [
       .section-head h2 { font-size: clamp(1.5rem, 3vw, 2rem); margin: 0 0 0.5rem; }
       .section-head p { color: var(--muted); margin: 0; }
 
-      .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+      .grid { display: grid; gap: 1rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 980px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
       .card {
         background: var(--card); border: 1px solid var(--border);
         border-radius: var(--radius); padding: 1.4rem;
@@ -240,27 +248,16 @@ const faqs = [
       .step .n {
         counter-increment: step; flex: none;
         width: 28px; height: 28px; border-radius: 50%;
-        background: var(--accent); color: #fff; font-weight: 700; font-size: 0.9rem;
+        background: var(--accent); color: #141414; font-weight: 700; font-size: 0.9rem;
         display: grid; place-items: center;
       }
       .step .n::before { content: counter(step); }
       .step p { margin: 0.15rem 0 0; }
       .step b { color: var(--heading); }
 
-      /* ---------- downloads ---------- */
-      .dl-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-      .dl {
-        background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-        padding: 1.3rem; text-align: center;
-      }
-      .dl h3 { margin: 0 0 0.2rem; font-size: 1rem; }
-      .dl .os { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.9rem; }
-      .dl a { font-size: 0.92rem; }
-      .note {
-        margin-top: 1.4rem; padding: 0.9rem 1.1rem; border-radius: 10px;
-        background: var(--bg-soft); border: 1px solid var(--border);
-        color: var(--muted); font-size: 0.88rem;
-      }
+      /* ---------- install ---------- */
+      .quiet { text-align: center; color: var(--muted); font-size: 0.9rem; margin: 1.3rem 0 0; }
+      .quiet a { color: var(--accent-hi); }
 
       /* ---------- faq ---------- */
       .faq { max-width: 760px; margin: 0 auto; }
@@ -276,53 +273,28 @@ const faqs = [
       details[open] summary::after { content: "–"; }
       details p { margin: 0.7rem 0 0; color: var(--text); }
 
-      /* ---------- footer ---------- */
-      footer {
-        border-top: 1px solid var(--border); padding: 2.2rem 0 3rem;
-        color: var(--muted); font-size: 0.88rem;
-      }
-      footer .row { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-      footer a { color: var(--muted); }
-      footer a:hover { color: var(--heading); }
-      .warn { margin-top: 1rem; color: var(--muted); }
-
       @media (max-width: 640px) {
-        nav .links a:not(.btn) { display: none; }
         .hero { padding-top: 2rem; }
       }
     </style>
   </head>
 
   <body>
-    <div class="wrap">
-      <nav>
-        <a class="brand" href={`${base}/`}>
-          <img src={`${base}/assets/icon_256.png`} alt="" width="26" height="26" /> Laydown
-        </a>
-        <div class="links">
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
-          <a href="#faq">FAQ</a>
-          <a href={repo}>GitHub</a>
-          <a class="btn" href="#download">Download</a>
-        </div>
-      </nav>
-    </div>
+    <SiteHeader />
 
-    <header class="wrap hero">
+    <main class="wrap hero">
       <h1>Put your pages on the <span class="hl">press sheet</span></h1>
       <p class="lead">
         Laydown lays PDF pages out for printing — two-up on A3, a saddle-stitched
         booklet, a sheet of labels — so they come out right after they're printed,
-        folded and cut. Free, open source, and it runs on your machine.
+        folded and cut. Open source, and it runs on your machine.
       </p>
       <div class="cta">
-        <a class="btn big" href="#download">Download for free</a>
-        <a class="btn big ghost" href={repo}>View source</a>
+        <a class="btn big" href={STORE_URL}>Get it on the Microsoft Store</a>
+        <a class="btn big ghost" href="#how">How it works</a>
       </div>
-      <p class="under-cta">
-        Windows · macOS · Linux — v{version} · AGPL-3.0 · nothing uploaded, no account
-      </p>
+      <p class="under-cta">Try it free for 15 days, then buy it once.</p>
+      <p class="under-cta meta">Windows 10 and 11 · v{version} · AGPL-3.0 · Nothing uploaded, no account</p>
 
       <div class="shot">
         <img
@@ -331,7 +303,7 @@ const faqs = [
           alt="Laydown laying a 16-page booklet out on A3 sheets, with the settings panel showing booklet binding, creep and gutter controls"
         />
       </div>
-    </header>
+    </main>
 
     <!-- section + .wrap must stay on separate elements: .wrap's `padding: 0 1.5rem`
          out-specifies section's vertical padding and glues the band to its neighbours. -->
@@ -370,35 +342,15 @@ const faqs = [
     <section id="download">
       <div class="wrap">
         <div class="section-head">
-          <h2>Download Laydown {version}</h2>
-          <p>Free, no account, no strings. Everything's included — no Python needed.</p>
+          <h2>Get started in a minute</h2>
+          <p>Windows 10 or 11, 64-bit. The Microsoft Store installs Laydown and keeps it up to date.</p>
         </div>
-        <div class="dl-grid">
-          <div class="dl">
-            <h3>Windows</h3>
-            <p class="os">10 / 11 · 64-bit · installer or portable</p>
-            <a class="btn" href={latest}>Get the installer</a>
-            <p class="os" style="margin-top:.8rem">Portable ZIP also on the releases page</p>
-          </div>
-          <div class="dl">
-            <h3>macOS</h3>
-            <p class="os">11+ · Apple silicon &amp; Intel</p>
-            <a class="btn" href={latest}>Get the .dmg</a>
-            <p class="os" style="margin-top:.8rem">First launch: right-click → Open</p>
-          </div>
-          <div class="dl">
-            <h3>Linux</h3>
-            <p class="os">x86_64 · portable tar.gz</p>
-            <a class="btn" href={latest}>Get the tarball</a>
-            <p class="os" style="margin-top:.8rem">Extract and run — no install</p>
-          </div>
+        <div class="steps">
+          <div class="step"><span class="n"></span><p><b>Get it from the Microsoft Store.</b> Open Laydown on the <a href={STORE_URL}>Microsoft Store</a> and install it.</p></div>
+          <div class="step"><span class="n"></span><p><b>Try it free for 15 days.</b> Open a PDF and lay it out. Every feature works during the trial.</p></div>
+          <div class="step"><span class="n"></span><p><b>Buy it once.</b> Keep Laydown after the trial with a one-time purchase in the Store.</p></div>
         </div>
-        <p class="note">
-          The Windows and macOS builds aren't code-signed yet, so the first launch shows a
-          "publisher unknown" warning — on Windows that's <b>More info → Run anyway</b>.
-          Signing costs money and isn't there yet. You can always
-          <a href={repo}>read the source</a> or build it yourself.
-        </p>
+        <p class="quiet">On macOS or Linux? Laydown builds for both are <a href={RELEASES_URL}>on GitHub</a>.</p>
       </div>
     </section>
 
@@ -416,26 +368,6 @@ const faqs = [
       </div>
     </section>
 
-    <footer>
-      <div class="wrap">
-        <div class="row">
-          <div>
-            © {year} <a href="https://github.com/danielmevit">Daniel Mevit</a> · Made by
-            <a href="https://damt.xyz">damt.xyz</a>
-          </div>
-          <div>
-            <a href={repo}>GitHub</a> ·
-            <a href={releases}>Releases</a> ·
-            <a href={`${repo}/blob/main/CHANGELOG.md`}>Changelog</a> ·
-            <a href={`${base}/privacy/`}>Privacy</a> ·
-            <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
-          </div>
-        </div>
-        <p class="warn">
-          Provided "as is", without warranty. Always check your output before committing
-          a job to press.
-        </p>
-      </div>
-    </footer>
+    <SiteFooter />
   </body>
 </html>

@@ -1,0 +1,61 @@
+---
+import { STORE_URL, REPO_URL, CHANGELOG_URL, SUPPORT_EMAIL } from '../lib/site';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<footer class="site-footer">
+  <div class="f-brand">
+    <a class="brand" href={`${base}/`}>
+      <img src={`${base}/assets/icon_256.png`} alt="" width="24" height="24" /> Laydown
+    </a>
+    <p class="warn">Provided “as is”, without warranty. Always check your output before committing a job to press.</p>
+  </div>
+  <div class="f-group">
+    <h2>Get Laydown</h2>
+    <ul>
+      <li><a href={STORE_URL}>Microsoft Store</a></li>
+      <li><a href={CHANGELOG_URL}>Changelog</a></li>
+      <li><a href={REPO_URL}>Source code on GitHub</a></li>
+    </ul>
+  </div>
+  <div class="f-group">
+    <h2>Help</h2>
+    <ul>
+      <li><a href={`mailto:${SUPPORT_EMAIL}`}>Support</a></li>
+      <li><a href={`${base}/privacy/`}>Privacy</a></li>
+    </ul>
+  </div>
+  <div class="f-group">
+    <h2>About</h2>
+    <ul>
+      <li>Made by <a href="https://damt.xyz">damt.xyz</a></li>
+      <li>© 2026 damt.xyz</li>
+    </ul>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    display: grid; gap: 1.5rem 2rem;
+    grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr));
+    border-top: 1px solid var(--border);
+    padding: 2rem clamp(16px, 4vw, 64px) 2.5rem;
+    color: var(--muted); font-size: 0.88rem;
+  }
+  .brand {
+    display: inline-flex; align-items: center; gap: 0.55rem;
+    font-weight: 700; color: var(--heading); text-decoration: none; font-size: 1.05rem;
+  }
+  .brand img { width: 24px; height: 24px; border-radius: 6px; }
+  .warn { margin: 0.7rem 0 0; max-width: 46ch; }
+  h2 {
+    margin: 0 0 0.6rem; font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+  a { color: var(--text); }
+  a:hover { color: var(--heading); }
+  @media (max-width: 760px) {
+    .site-footer { grid-template-columns: 1fr 1fr; }
+    .f-brand { grid-column: 1 / -1; }
+  }
+</style>

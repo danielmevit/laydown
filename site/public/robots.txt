@@ -33,4 +33,4 @@ User-agent: Omgili
 Allow: /
 
 # Sitemap location
-Sitemap: https://danielmevit.github.io/laydown/sitemap.xml
+Sitemap: https://laydown.damt.xyz/sitemap.xml

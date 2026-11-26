@@ -1,13 +1,19 @@
-# Laydown
+import type { APIRoute } from 'astro';
+import { STORE_URL, REPO_URL, RELEASES_URL } from '../lib/site';
 
-> Free, open-source PDF imposition for commercial printing. Lays PDF pages out on
-> press sheets — n-up, booklets, signatures, printer marks — on Windows, macOS and
-> Linux. Runs locally; nothing is uploaded.
+// Generated so the Store link comes from the single STORE_URL constant.
+const body = `# Laydown
 
-- Site: https://danielmevit.github.io/laydown/
-- Source: https://github.com/danielmevit/laydown
-- Downloads: https://github.com/danielmevit/laydown/releases
-- License: AGPL-3.0-only. Free, no paid tier.
+> Open-source PDF imposition for commercial printing. Lays PDF pages out on press
+> sheets — n-up, booklets, signatures, printer marks — on Windows, macOS and Linux.
+> Runs locally; nothing is uploaded.
+
+- Site: https://laydown.damt.xyz/
+- Get it (Windows): Microsoft Store, ${STORE_URL}
+- Price: a one-time purchase after a 15-day free trial. No subscription, no ads.
+- macOS and Linux builds: ${RELEASES_URL}
+- Source code: ${REPO_URL} (AGPL-3.0-only)
+- Support: support@damt.xyz
 - Author: Daniel Mevit (https://damt.xyz)
 
 ## What it does
@@ -28,3 +34,7 @@
 - There is no network code and no telemetry.
 - It is not a print driver and not a PDF editor; it arranges existing pages onto sheets.
 - Work-and-turn / work-and-tumble press forms are not implemented yet.
+`;
+
+export const GET: APIRoute = () =>
+  new Response(body, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
